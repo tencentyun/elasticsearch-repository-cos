@@ -1,3 +1,10 @@
+## 编译安装
+```
+mvn clean package
+#在release中找到zip压缩包
+#执行插件安装
+/$you_elasticsearch_dir/bin/elasticsearch-plugin install file:///$you_plugin_path/elasticsearch-cos-x.x.zip
+```
 ## 创建仓库
 
 ```

@@ -11,7 +11,7 @@
     <properties>
         <elasticsearch.version>5.6.4</elasticsearch.version>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <project.description>elasticsearch-repository-oss</project.description>
+        <project.description>elasticsearch-repository-cos</project.description>
         <elasticsearch.assembly.descriptor>${project.basedir}/src/main/assemblies/plugin.xml
         </elasticsearch.assembly.descriptor>
         <elasticsearch.plugin.name>elasticsearch-repository-cos</elasticsearch.plugin.name>
@@ -90,7 +90,7 @@
                     <appendAssemblyId>false</appendAssemblyId>
                     <outputDirectory>${project.build.directory}/releases/</outputDirectory>
                     <descriptors>
-                        <descriptor>${basedir}/plugin.xml</descriptor>
+                        <descriptor>src/main/assemblies/plugin.xml</descriptor>
                     </descriptors>
                 </configuration>
                 <executions>
