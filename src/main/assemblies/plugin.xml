@@ -21,6 +21,7 @@
             <outputDirectory>/elasticsearch</outputDirectory>
             <includes>
                 <include>plugin-descriptor.properties</include>
+                <include>plugin-security.policy</include>
             </includes>
         </fileSet>
         <fileSet>

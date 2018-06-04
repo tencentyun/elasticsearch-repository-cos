@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.NoSuchFileException;
+import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +32,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
     protected final COSBlobStore blobStore;
     protected final String keyPath;
 
-    COSBlobContainer(BlobPath path, COSBlobStore blobStore){
+    COSBlobContainer(BlobPath path, COSBlobStore blobStore) {
         super(path);
         this.blobStore = blobStore;
         this.keyPath = path.buildAsString();
@@ -40,9 +41,10 @@ public class COSBlobContainer extends AbstractBlobContainer {
     @Override
     public boolean blobExists(String blobName) {
         try {
-            blobStore.client().getObjectMetadata(blobStore.bucket(), buildKey(blobName));
+            SocketAccess.doPrivileged(() ->
+                    blobStore.client().getObjectMetadata(blobStore.bucket(), buildKey(blobName)));
             return true;
-        } catch(CosClientException e) {
+        } catch (CosClientException e) {
             return false;
         } catch (Exception e) {
             throw new BlobStoreException("failed to check if blob exists", e);
@@ -52,11 +54,12 @@ public class COSBlobContainer extends AbstractBlobContainer {
     @Override
     public InputStream readBlob(String blobName) throws IOException {
         try {
-            COSObject object = blobStore.client().getObject(blobStore.bucket(), buildKey(blobName));
+            COSObject object = SocketAccess.doPrivileged(() ->
+                    blobStore.client().getObject(blobStore.bucket(), buildKey(blobName)));
             return object.getObjectContent();
-        } catch(CosClientException e) {
+        } catch (CosClientException e) {
             if (e instanceof CosServiceException) {
-                if (404 == ((CosServiceException)e).getStatusCode()) {
+                if (404 == ((CosServiceException) e).getStatusCode()) {
                     throw new NoSuchFileException("Blob object [" + blobName + "] not found: " + e.getMessage());
                 }
             }
@@ -86,7 +89,8 @@ public class COSBlobContainer extends AbstractBlobContainer {
         PutObjectRequest putObjectRequest =
                 new PutObjectRequest(blobStore.bucket(), buildKey(blobName), inputStream, meta);
         try {
-            PutObjectResult putObjectResult = blobStore.client().putObject(putObjectRequest);
+            PutObjectResult putObjectResult = SocketAccess.doPrivileged(() ->
+                    blobStore.client().putObject(putObjectRequest));
             putObjectResult.getETag();
         } catch (CosServiceException e) {
             throw new IOException("Exception when write blob " + blobName, e);
@@ -112,7 +116,8 @@ public class COSBlobContainer extends AbstractBlobContainer {
 
         try {
             final InitiateMultipartUploadRequest request = new InitiateMultipartUploadRequest(bucketName, buildKey(blobName));
-            InitiateMultipartUploadResult initResult = blobStore.client().initiateMultipartUpload(request);
+            InitiateMultipartUploadResult initResult = SocketAccess.doPrivileged(() ->
+                    blobStore.client().initiateMultipartUpload(request));
             uploadId.set(initResult.getUploadId());
             if (Strings.isEmpty(uploadId.get())) {
                 throw new IOException("Failed to initialize multipart upload " + blobName);
@@ -137,7 +142,8 @@ public class COSBlobContainer extends AbstractBlobContainer {
                 }
                 bytesCount += uploadPartRequest.getPartSize();
 
-                final UploadPartResult uploadResponse = blobStore.client().uploadPart(uploadPartRequest);
+                final UploadPartResult uploadResponse = SocketAccess.doPrivileged(() ->
+                        blobStore.client().uploadPart(uploadPartRequest));
                 parts.add(uploadResponse.getPartETag());
             }
 
@@ -147,15 +153,17 @@ public class COSBlobContainer extends AbstractBlobContainer {
             }
 
             CompleteMultipartUploadRequest completeMultipartUploadRequest = new CompleteMultipartUploadRequest(blobStore.bucket(), buildKey(blobName), uploadId.get(), parts);
-            blobStore.client().completeMultipartUpload(completeMultipartUploadRequest);
+            SocketAccess.doPrivileged(() ->
+                    blobStore.client().completeMultipartUpload(completeMultipartUploadRequest));
             success = true;
 
         } catch (CosClientException e) {
             throw new IOException("Unable to upload object [" + blobName + "] using multipart upload", e);
         } finally {
-            if (success==false&&Strings.hasLength(uploadId.get())) {
+            if (success == false && Strings.hasLength(uploadId.get())) {
                 final AbortMultipartUploadRequest aboutRequest = new AbortMultipartUploadRequest(blobStore.bucket(), buildKey(blobName), uploadId.get());
-                blobStore.client().abortMultipartUpload(aboutRequest);
+                SocketAccess.doPrivilegedVoid(() ->
+                        blobStore.client().abortMultipartUpload(aboutRequest));
             }
         }
     }
@@ -167,8 +175,9 @@ public class COSBlobContainer extends AbstractBlobContainer {
         }
 
         try {
-            blobStore.client().deleteObject(blobStore.bucket(), buildKey(blobName));
-        } catch(CosClientException e) {
+            SocketAccess.doPrivilegedVoid(() ->
+                    blobStore.client().deleteObject(blobStore.bucket(), buildKey(blobName)));
+        } catch (CosClientException e) {
             throw new IOException("Exception when deleting blob [" + blobName + "]", e);
         }
     }
@@ -176,48 +185,55 @@ public class COSBlobContainer extends AbstractBlobContainer {
     @Override
     public void move(String sourceBlobName, String targetBlobName) throws IOException {
         try {
-            this.blobStore.client().copyObject(blobStore.bucket(), buildKey(sourceBlobName), blobStore.bucket(), buildKey(targetBlobName));
-            this.blobStore.client().deleteObject(blobStore.bucket(), buildKey(sourceBlobName));
-        } catch(CosClientException e) {
+            SocketAccess.doPrivileged(() ->
+                    this.blobStore.client().copyObject(
+                            blobStore.bucket(),
+                            buildKey(sourceBlobName),
+                            blobStore.bucket(),
+                            buildKey(targetBlobName)));
+            SocketAccess.doPrivilegedVoid(() ->
+                    this.blobStore.client().deleteObject(blobStore.bucket(), buildKey(sourceBlobName)));
+        } catch (CosClientException e) {
             throw new IOException("Exception when copy blob from " + sourceBlobName + " to " + targetBlobName, e);
         }
     }
 
     @Override
     public Map<String, BlobMetaData> listBlobsByPrefix(@Nullable String blobNamePrefix) throws IOException {
-        MapBuilder<String, BlobMetaData> blobsBuilder = MapBuilder.newMapBuilder();
-        ObjectListing prevListing = null;
+        return SocketAccess.doPrivileged((PrivilegedAction<Map<String, BlobMetaData>>) () -> {
+            MapBuilder<String, BlobMetaData> blobsBuilder = MapBuilder.newMapBuilder();
+            ObjectListing prevListing = null;
 
-        while(true) {
-            ObjectListing list;
-            if (prevListing != null) {
-                list = blobStore.client().listNextBatchOfObjects(prevListing);
-            }
-            else {
-                if (blobNamePrefix != null) {
-                    list = blobStore.client().listObjects(blobStore.bucket(), buildKey(blobNamePrefix));
+            while (true) {
+                ObjectListing list;
+                if (prevListing != null) {
+                    list = blobStore.client().listNextBatchOfObjects(prevListing);
                 } else {
-                    list = blobStore.client().listObjects(blobStore.bucket(), keyPath);
+                    if (blobNamePrefix != null) {
+                        list = blobStore.client().listObjects(blobStore.bucket(), buildKey(blobNamePrefix));
+                    } else {
+                        list = blobStore.client().listObjects(blobStore.bucket(), keyPath);
+                    }
                 }
-            }
-            for (COSObjectSummary summary : list.getObjectSummaries()) {
+                for (COSObjectSummary summary : list.getObjectSummaries()) {
                 /* TODO: 需要联系cos-sdk修改
                  * 这里cos-sdk-v5有一些问题
                  * summary.getKey() 返回的path路径缺少开头的路径分隔符"/"
                  * 导致substring后path被错误截断
                 */
-                String oriName = "/"+summary.getKey();
-                //String name = summary.getKey().substring(keyPath.length());
-                String name = oriName.substring(keyPath.length());
-                blobsBuilder.put(name, new PlainBlobMetaData(name, summary.getSize()));
+                    String oriName = "/" + summary.getKey();
+                    //String name = summary.getKey().substring(keyPath.length());
+                    String name = oriName.substring(keyPath.length());
+                    blobsBuilder.put(name, new PlainBlobMetaData(name, summary.getSize()));
+                }
+                if (list.isTruncated()) {
+                    prevListing = list;
+                } else {
+                    break;
+                }
             }
-            if (list.isTruncated()) {
-                prevListing = list;
-            } else {
-                break;
-            }
-        }
-        return blobsBuilder.immutableMap();
+            return blobsBuilder.immutableMap();
+        });
     }
 
     @Override
