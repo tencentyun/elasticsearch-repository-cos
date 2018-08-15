@@ -87,7 +87,6 @@ public class COSBlobContainer extends AbstractBlobContainer {
                 new PutObjectRequest(blobStore.bucket(), buildKey(blobName), inputStream, meta);
         try {
             PutObjectResult putObjectResult = blobStore.client().putObject(putObjectRequest);
-            putObjectResult.getETag();
         } catch (CosServiceException e) {
             throw new IOException("Exception when write blob " + blobName, e);
         } catch (CosClientException e) {
