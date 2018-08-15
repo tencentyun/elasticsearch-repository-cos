@@ -91,7 +91,6 @@ public class COSBlobContainer extends AbstractBlobContainer {
         try {
             PutObjectResult putObjectResult = SocketAccess.doPrivileged(() ->
                     blobStore.client().putObject(putObjectRequest));
-            putObjectResult.getETag();
         } catch (CosServiceException e) {
             throw new IOException("Exception when write blob " + blobName, e);
         } catch (CosClientException e) {
