@@ -29,7 +29,7 @@ PUT _snapshot/my_cos_backup
 GET _snapshot
 ```
 
-也可以使用```GET _snapshot/my_cos_bakcup```获取指定的仓库信息
+也可以使用```GET _snapshot/my_cos_backup```获取指定的仓库信息
 
 
 ## 创建快照
