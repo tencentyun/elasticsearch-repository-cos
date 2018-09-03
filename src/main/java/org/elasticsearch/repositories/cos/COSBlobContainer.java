@@ -161,14 +161,17 @@ public class COSBlobContainer extends AbstractBlobContainer {
 
     @Override
     public void deleteBlob(String blobName) throws IOException {
-        if (!blobExists(blobName)) {
-            throw new NoSuchFileException("Blob [" + blobName + "] does not exist");
+        try {
+            if (!blobExists(blobName)) {
+                throw new IOException("Blob " + blobName + " does not exist");
+            }
+        } catch (BlobStoreException e) {
+            throw new IOException("Exception when check blob exists " + blobName + " " + e);
         }
-
         try {
             blobStore.client().deleteObject(blobStore.bucket(), buildKey(blobName));
         } catch(CosClientException e) {
-            throw new IOException("Exception when deleting blob [" + blobName + "]", e);
+            throw new IOException("Exception when deleting blob " + blobName, e);
         }
     }
 
@@ -206,8 +209,8 @@ public class COSBlobContainer extends AbstractBlobContainer {
                  * 导致substring后path被错误截断
                 */
                 String oriName = "/"+summary.getKey();
-                //String name = summary.getKey().substring(keyPath.length());
-                String name = oriName.substring(keyPath.length());
+                String newKeyPath = !keyPath.startsWith("/")?"/"+keyPath:keyPath;
+                String name = oriName.substring(newKeyPath.length());
                 blobsBuilder.put(name, new PlainBlobMetaData(name, summary.getSize()));
             }
             if (list.isTruncated()) {
