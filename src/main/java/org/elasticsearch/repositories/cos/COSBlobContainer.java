@@ -67,12 +67,11 @@ public class COSBlobContainer extends AbstractBlobContainer {
         }
     }
 
+    /**
+     * This implementation ignores the failIfAlreadyExists flag as the COS API has no way to enforce this due to its weak consistency model.
+     */
     @Override
-    public void writeBlob(String blobName, InputStream inputStream, long blobSize) throws IOException {
-        if (blobExists(blobName)) {
-            throw new FileAlreadyExistsException("blob [" + blobName + "] already exists, cannot overwrite");
-        }
-
+    public void writeBlob(String blobName, InputStream inputStream, long blobSize, boolean failIfAlreadyExists) throws IOException {
         if (blobSize <= COSService.MAX_SINGLE_FILE_SIZE.getBytes()) {
             doSingleUpload(blobName, inputStream, blobSize);
         } else {
@@ -93,9 +92,9 @@ public class COSBlobContainer extends AbstractBlobContainer {
                     blobStore.client().putObject(putObjectRequest));
             putObjectResult.getETag();
         } catch (CosServiceException e) {
-            throw new IOException("Exception when write blob " + blobName, e);
+            throw new IOException("Exception when write blob [" + blobName + "]", e);
         } catch (CosClientException e) {
-            throw new IOException("Exception when write blob " + blobName, e);
+            throw new IOException("Exception when write blob [" + blobName + "]", e);
         }
     }
 
@@ -120,7 +119,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
                     blobStore.client().initiateMultipartUpload(request));
             uploadId.set(initResult.getUploadId());
             if (Strings.isEmpty(uploadId.get())) {
-                throw new IOException("Failed to initialize multipart upload " + blobName);
+                throw new IOException("Failed to initialize multipart upload [" + blobName + "]");
             }
             final List<PartETag> parts = new ArrayList<>();
 
@@ -170,31 +169,24 @@ public class COSBlobContainer extends AbstractBlobContainer {
 
     @Override
     public void deleteBlob(String blobName) throws IOException {
-        if (!blobExists(blobName)) {
-            throw new NoSuchFileException("Blob [" + blobName + "] does not exist");
+        try {
+            if (!blobExists(blobName)) {
+                throw new IOException("Blob [" + blobName + "] does not exist");
+            }
+        } catch (BlobStoreException e) {
+            throw new IOException("Exception when check blob exists [" + blobName + "] " + e);
         }
+        deleteBlobIgnoringIfNotExists(blobName);
+    }
 
+    @Override
+    public void deleteBlobIgnoringIfNotExists(String blobName) throws IOException {
+        // There is no way to know if an non-versioned object existed before the deletion
         try {
             SocketAccess.doPrivilegedVoid(() ->
                     blobStore.client().deleteObject(blobStore.bucket(), buildKey(blobName)));
         } catch (CosClientException e) {
             throw new IOException("Exception when deleting blob [" + blobName + "]", e);
-        }
-    }
-
-    @Override
-    public void move(String sourceBlobName, String targetBlobName) throws IOException {
-        try {
-            SocketAccess.doPrivileged(() ->
-                    this.blobStore.client().copyObject(
-                            blobStore.bucket(),
-                            buildKey(sourceBlobName),
-                            blobStore.bucket(),
-                            buildKey(targetBlobName)));
-            SocketAccess.doPrivilegedVoid(() ->
-                    this.blobStore.client().deleteObject(blobStore.bucket(), buildKey(sourceBlobName)));
-        } catch (CosClientException e) {
-            throw new IOException("Exception when copy blob from " + sourceBlobName + " to " + targetBlobName, e);
         }
     }
 
@@ -216,14 +208,14 @@ public class COSBlobContainer extends AbstractBlobContainer {
                     }
                 }
                 for (COSObjectSummary summary : list.getObjectSummaries()) {
-                /* TODO: 需要联系cos-sdk修改
-                 * 这里cos-sdk-v5有一些问题
-                 * summary.getKey() 返回的path路径缺少开头的路径分隔符"/"
-                 * 导致substring后path被错误截断
-                */
+                    /* TODO: 需要联系cos-sdk修改
+                     * 这里cos-sdk-v5有一些问题
+                     * summary.getKey() 返回的path路径缺少开头的路径分隔符"/"
+                     * 导致substring后path被错误截断
+                     */
                     String oriName = "/" + summary.getKey();
-                    //String name = summary.getKey().substring(keyPath.length());
-                    String name = oriName.substring(keyPath.length());
+                    String newKeyPath = !keyPath.startsWith("/") ? "/" + keyPath : keyPath;
+                    String name = oriName.substring(newKeyPath.length());
                     blobsBuilder.put(name, new PlainBlobMetaData(name, summary.getSize()));
                 }
                 if (list.isTruncated()) {

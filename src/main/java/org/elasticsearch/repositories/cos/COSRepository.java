@@ -1,5 +1,6 @@
 package org.elasticsearch.repositories.cos;
 
+import com.qcloud.cos.COSClient;
 import org.elasticsearch.cluster.metadata.RepositoryMetaData;
 import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.blobstore.BlobStore;
@@ -16,7 +17,8 @@ import java.io.IOException;
 
 public class COSRepository extends BlobStoreRepository {
     public static final String TYPE = "cos";
-    private final COSBlobStore blobStore;
+    private final String bucket;
+    private COSClient client;
     private final BlobPath basePath;
     private final boolean compress;
     private final ByteSizeValue chunkSize;
@@ -28,7 +30,8 @@ public class COSRepository extends BlobStoreRepository {
         String basePath = getSetting(COSClientSettings.BASE_PATH, metadata);
         String app_id = COSRepository.getSetting(COSClientSettings.APP_ID, metadata);
         // qcloud-sdk-v5 app_id directly joined with bucket name
-        bucket = bucket+"-"+app_id;
+        this.bucket = bucket+"-"+app_id;
+        this.client = cos.getClient();
 
         if (Strings.hasLength(basePath)) {
             BlobPath path = new BlobPath();
@@ -45,13 +48,11 @@ public class COSRepository extends BlobStoreRepository {
         logger.trace("using bucket [{}], base_path [{}], chunk_size [{}], compress [{}]", bucket,
                 basePath, chunkSize, compress);
 
-        blobStore = new COSBlobStore(settings, cos.getClient(), bucket);
-
     }
 
     @Override
-    protected BlobStore blobStore() {
-        return blobStore;
+    protected COSBlobStore createBlobStore() {
+        return new COSBlobStore(settings,client,bucket);
     }
 
     @Override
