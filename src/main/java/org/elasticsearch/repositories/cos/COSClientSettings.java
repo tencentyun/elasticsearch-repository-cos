@@ -27,4 +27,5 @@ public class COSClientSettings {
     public static final Setting<ByteSizeValue> CHUNK_SIZE =
             byteSizeSetting("chunk_size", MAX_CHUNK_SIZE, MIN_CHUNK_SIZE, MAX_CHUNK_SIZE,
                     Setting.Property.NodeScope, Setting.Property.Dynamic);
+    public static final Setting<String> CosEndPoint = Setting.simpleString("cosEndPoint", Property.NodeScope, Property.Dynamic);
 }

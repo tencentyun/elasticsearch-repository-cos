@@ -26,9 +26,11 @@ public class COSService extends AbstractLifecycleComponent {
         String access_key_id = COSRepository.getSetting(COSClientSettings.ACCESS_KEY_ID, metaData);
         String access_key_secret = COSRepository.getSetting(COSClientSettings.ACCESS_KEY_SECRET, metaData);
         String region = COSRepository.getSetting(COSClientSettings.REGION, metaData);
+        String endPoint = COSRepository.getSetting(COSClientSettings.CosEndPoint, metaData);
 
         COSCredentials cred = new BasicCOSCredentials(access_key_id, access_key_secret);
         ClientConfig clientConfig = new ClientConfig(new Region(region));
+        clientConfig.setEndPointSuffix(endPoint);
         COSClient client = new COSClient(cred, clientConfig);
 
         return client;
