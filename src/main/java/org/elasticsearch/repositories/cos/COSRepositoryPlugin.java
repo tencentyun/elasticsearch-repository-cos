@@ -34,6 +34,6 @@ public class COSRepositoryPlugin extends Plugin implements RepositoryPlugin {
     public List<Setting<?>> getSettings() {
         return Arrays.asList(COSClientSettings.REGION, COSClientSettings.ACCESS_KEY_ID, COSClientSettings.ACCESS_KEY_SECRET,
                 COSClientSettings.APP_ID, COSClientSettings.BUCKET,
-                COSClientSettings.BASE_PATH, COSClientSettings.COMPRESS, COSClientSettings.CHUNK_SIZE, COSClientSettings.CosEndPoint);
+                COSClientSettings.BASE_PATH, COSClientSettings.COMPRESS, COSClientSettings.CHUNK_SIZE, COSClientSettings.END_POINT);
     }
 }
