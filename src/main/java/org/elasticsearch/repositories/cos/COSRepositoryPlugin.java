@@ -16,22 +16,24 @@ import org.elasticsearch.plugins.RepositoryPlugin;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.repositories.Repository;
+import org.elasticsearch.threadpool.ThreadPool;
 
 /**
  * Created by Ethan-Zhang on 30/03/2018.
  */
 public class COSRepositoryPlugin extends Plugin implements RepositoryPlugin {
 
-    protected COSService createStorageService(Settings settings, RepositoryMetaData metaData) {
-        return new COSService(settings, metaData);
+    protected COSService createStorageService(RepositoryMetaData metaData) {
+        return new COSService(metaData);
     }
 
     @Override
-    public Map<String, Repository.Factory> getRepositories(Environment env,
-                                                                     NamedXContentRegistry namedXContentRegistry) {
+    public Map<String, Repository.Factory> getRepositories(final Environment env,
+                                                           final NamedXContentRegistry namedXContentRegistry,
+                                                            final ThreadPool threadPool) {
         return Collections.singletonMap(COSRepository.TYPE,
-                (metadata) -> new COSRepository(metadata, env.settings(), namedXContentRegistry,
-                        createStorageService(env.settings(), metadata)));
+                (metadata) -> new COSRepository(metadata, namedXContentRegistry,
+                        createStorageService(metadata), threadPool));
     }
 
     @Override

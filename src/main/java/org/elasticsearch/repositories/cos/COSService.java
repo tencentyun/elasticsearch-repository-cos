@@ -12,13 +12,15 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
 
-public class COSService extends AbstractLifecycleComponent {
+import java.io.Closeable;
+
+//TODO: 考虑是否需要继承closeable，处理连接池等问题
+public class COSService {
 
     private COSClient client;
     public static final ByteSizeValue MAX_SINGLE_FILE_SIZE = new ByteSizeValue(5, ByteSizeUnit.GB);
 
-    COSService(Settings settings, RepositoryMetaData metaData) {
-        super(settings);
+    COSService(RepositoryMetaData metaData) {
         this.client = createClient(metaData);
     }
 
@@ -32,18 +34,6 @@ public class COSService extends AbstractLifecycleComponent {
         COSClient client = new COSClient(cred, clientConfig);
 
         return client;
-    }
-
-    @Override
-    protected void doStart() throws ElasticsearchException {
-    }
-
-    @Override
-    protected void doStop() throws ElasticsearchException {
-    }
-
-    @Override
-    protected void doClose() throws ElasticsearchException {
     }
 
     public COSClient getClient() {

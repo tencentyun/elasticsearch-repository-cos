@@ -1,41 +1,50 @@
 package org.elasticsearch.repositories.cos;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.cluster.metadata.RepositoryMetaData;
 import org.elasticsearch.common.blobstore.BlobPath;
-import org.elasticsearch.common.blobstore.BlobStore;
+import org.elasticsearch.common.logging.DeprecationLogger;
 import org.elasticsearch.common.settings.Setting;
-import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.repositories.RepositoryException;
 import org.elasticsearch.repositories.blobstore.BlobStoreRepository;
-
-import java.io.File;
-import java.io.IOException;
+import org.elasticsearch.threadpool.ThreadPool;
 
 public class COSRepository extends BlobStoreRepository {
+    private static final Logger logger = LogManager.getLogger(COSRepository.class);
+    private static final DeprecationLogger deprecationLogger = new DeprecationLogger(logger);
     public static final String TYPE = "cos";
-    private final COSBlobStore blobStore;
     private final BlobPath basePath;
     private final boolean compress;
     private final ByteSizeValue chunkSize;
+    private final COSService service;
+    private final String bucket;
 
-    COSRepository(RepositoryMetaData metadata, Settings settings,
-                 NamedXContentRegistry namedXContentRegistry, COSService cos) throws IOException {
-        super(metadata, settings, namedXContentRegistry);
+    /**
+     * When set to true metadata files are stored in compressed format. This setting doesn’t affect index
+     * files that are already compressed by default. Defaults to false.
+     */
+    static final Setting<Boolean> COMPRESS_SETTING = Setting.boolSetting("compress", false);
+
+
+    COSRepository(RepositoryMetaData metadata,
+                  NamedXContentRegistry namedXContentRegistry,
+                  COSService cos,
+                  ThreadPool threadpool) {
+        super(metadata, COMPRESS_SETTING.get(metadata.settings()), namedXContentRegistry, threadpool);
+        this.service = cos;
         String bucket = getSetting(COSClientSettings.BUCKET, metadata);
         String basePath = getSetting(COSClientSettings.BASE_PATH, metadata);
         String app_id = COSRepository.getSetting(COSClientSettings.APP_ID, metadata);
         // qcloud-sdk-v5 app_id directly joined with bucket name
-        bucket = bucket+"-"+app_id;
+        // TODO: 考虑不要在让用户传appid的参数，因为现在bucket name直接就是带着appid了，考虑两个做兼容，并写deprecation log
+        this.bucket = bucket+"-"+app_id;
 
         if (Strings.hasLength(basePath)) {
-            BlobPath path = new BlobPath();
-            for (String elem : basePath.split(File.separator)) {
-                path = path.add(elem);
-            }
-            this.basePath = path;
+            this.basePath = new BlobPath().add(basePath);
         } else {
             this.basePath = BlobPath.cleanPath();
         }
@@ -44,25 +53,18 @@ public class COSRepository extends BlobStoreRepository {
 
         logger.trace("using bucket [{}], base_path [{}], chunk_size [{}], compress [{}]", bucket,
                 basePath, chunkSize, compress);
-
-        blobStore = new COSBlobStore(settings, cos.getClient(), bucket);
-
     }
 
     @Override
-    protected BlobStore blobStore() {
-        return blobStore;
+    protected COSBlobStore createBlobStore() {
+        return new COSBlobStore(this.service.getClient(), this.bucket);
     }
 
     @Override
-    protected BlobPath basePath() {
+    public BlobPath basePath() {
         return basePath;
     }
 
-    @Override
-    protected boolean isCompress() {
-        return compress;
-    }
 
     @Override
     protected ByteSizeValue chunkSize() {

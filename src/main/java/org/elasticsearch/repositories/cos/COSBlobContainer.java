@@ -4,20 +4,19 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.NoSuchFileException;
-import java.security.PrivilegedAction;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
+import com.qcloud.cos.exception.MultiObjectDeleteException;
 import org.apache.lucene.util.SetOnce;
+import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.Strings;
-import org.elasticsearch.common.blobstore.BlobMetaData;
-import org.elasticsearch.common.blobstore.BlobPath;
-import org.elasticsearch.common.blobstore.BlobStoreException;
+import org.elasticsearch.common.blobstore.*;
 import org.elasticsearch.common.blobstore.support.AbstractBlobContainer;
 import org.elasticsearch.common.blobstore.support.PlainBlobMetaData;
-import org.elasticsearch.common.collect.MapBuilder;
 import org.elasticsearch.common.collect.Tuple;
 
 import com.qcloud.cos.exception.CosClientException;
@@ -29,6 +28,8 @@ import com.qcloud.cos.model.*;
  */
 public class COSBlobContainer extends AbstractBlobContainer {
 
+    //TODO: 找cos开发确认一次删除最大值
+    private static final int MAX_BULK_DELETES = 500;
     protected final COSBlobStore blobStore;
     protected final String keyPath;
 
@@ -38,7 +39,6 @@ public class COSBlobContainer extends AbstractBlobContainer {
         this.keyPath = path.buildAsString();
     }
 
-    @Override
     public boolean blobExists(String blobName) {
         try {
             SocketAccess.doPrivileged(() ->
@@ -68,9 +68,14 @@ public class COSBlobContainer extends AbstractBlobContainer {
     }
 
     @Override
-    public void writeBlob(String blobName, InputStream inputStream, long blobSize) throws IOException {
-        if (blobExists(blobName)) {
-            throw new FileAlreadyExistsException("blob [" + blobName + "] already exists, cannot overwrite");
+    public void writeBlob(String blobName, InputStream inputStream, long blobSize, boolean failIfAlreadyExists) throws IOException {
+        //TODO: 确认COS这里的逻辑，是否上传同名的object会报错
+        if (failIfAlreadyExists) {
+            if (blobExists(blobName)) {
+                throw new FileAlreadyExistsException("blob [" + blobName + "] already exists, cannot overwrite");
+            }
+        } else {
+            this.deleteBlob(blobName);
         }
 
         if (blobSize <= COSService.MAX_SINGLE_FILE_SIZE.getBytes()) {
@@ -78,6 +83,11 @@ public class COSBlobContainer extends AbstractBlobContainer {
         } else {
             doMultipartUpload(blobName, inputStream, blobSize);
         }
+    }
+
+    @Override
+    public void writeBlobAtomic(String blobName, InputStream inputStream, long blobSize, boolean failIfAlreadyExists) throws IOException {
+        writeBlob(blobName, inputStream, blobSize, failIfAlreadyExists);
     }
 
     void doSingleUpload(String blobName, InputStream inputStream, long blobSize) throws IOException {
@@ -182,62 +192,162 @@ public class COSBlobContainer extends AbstractBlobContainer {
     }
 
     @Override
-    public void move(String sourceBlobName, String targetBlobName) throws IOException {
+    public DeleteResult delete() throws IOException {
+        final AtomicLong deletedBlobs = new AtomicLong();
+        final AtomicLong deletedBytes = new AtomicLong();
         try {
-            SocketAccess.doPrivileged(() ->
-                    this.blobStore.client().copyObject(
-                            blobStore.bucket(),
-                            buildKey(sourceBlobName),
-                            blobStore.bucket(),
-                            buildKey(targetBlobName)));
-            SocketAccess.doPrivilegedVoid(() ->
-                    this.blobStore.client().deleteObject(blobStore.bucket(), buildKey(sourceBlobName)));
-        } catch (CosClientException e) {
-            throw new IOException("Exception when copy blob from " + sourceBlobName + " to " + targetBlobName, e);
-        }
-    }
-
-    @Override
-    public Map<String, BlobMetaData> listBlobsByPrefix(@Nullable String blobNamePrefix) throws IOException {
-        return SocketAccess.doPrivileged((PrivilegedAction<Map<String, BlobMetaData>>) () -> {
-            MapBuilder<String, BlobMetaData> blobsBuilder = MapBuilder.newMapBuilder();
             ObjectListing prevListing = null;
-
-            while (true) {
+            while(true) {
                 ObjectListing list;
                 if (prevListing != null) {
-                    list = blobStore.client().listNextBatchOfObjects(prevListing);
+                    final ObjectListing finalPrevListing = prevListing;
+                    list = SocketAccess.doPrivileged(() -> blobStore.client().listNextBatchOfObjects(finalPrevListing));
                 } else {
-                    if (blobNamePrefix != null) {
-                        list = blobStore.client().listObjects(blobStore.bucket(), buildKey(blobNamePrefix));
-                    } else {
-                        list = blobStore.client().listObjects(blobStore.bucket(), keyPath);
-                    }
+                    final ListObjectsRequest listObjectsRequest = new ListObjectsRequest();
+                    listObjectsRequest.setBucketName(blobStore.bucket());
+                    listObjectsRequest.setPrefix(keyPath);
+                    list = SocketAccess.doPrivileged(() -> blobStore.client().listObjects(listObjectsRequest));
                 }
-                for (COSObjectSummary summary : list.getObjectSummaries()) {
-                /* TODO: 需要联系cos-sdk修改
-                 * 这里cos-sdk-v5有一些问题
-                 * summary.getKey() 返回的path路径缺少开头的路径分隔符"/"
-                 * 导致substring后path被错误截断
-                */
-                    String oriName = "/" + summary.getKey();
-                    //String name = summary.getKey().substring(keyPath.length());
-                    String name = oriName.substring(keyPath.length());
-                    blobsBuilder.put(name, new PlainBlobMetaData(name, summary.getSize()));
-                }
+                final List<String> blobsToDelete = new ArrayList<>();
+                list.getObjectSummaries().forEach(cosObjectSummary -> {
+                    deletedBlobs.incrementAndGet();
+                    deletedBytes.incrementAndGet();
+                    blobsToDelete.add(cosObjectSummary.getKey());
+                });
                 if (list.isTruncated()) {
                     prevListing = list;
                 } else {
+                    final List<String> lastBlobToDelete = new ArrayList<>(blobsToDelete);
+                    lastBlobToDelete.add(keyPath);
                     break;
                 }
             }
-            return blobsBuilder.immutableMap();
-        });
+        } catch (CosClientException e) {
+            throw new IOException("Exception when deleting blob container [\" + keyPath + \"]" + e);
+        }
+        return new DeleteResult(deletedBlobs.get(), deletedBytes.get());
+    }
+
+    @Override
+    public void deleteBlobsIgnoringIfNotExists(List<String> blobNames) throws IOException {
+        doDeleteBlobs(blobNames, true);
+    }
+
+    private void doDeleteBlobs(List<String> blobNames, boolean relative) throws IOException {
+        if (blobNames.isEmpty()) {
+            return;
+        }
+        final Set<String> outstanding;
+        if (relative) {
+            outstanding = blobNames.stream().map(this::buildKey).collect(Collectors.toSet());
+        } else {
+            outstanding = new HashSet<>(blobNames);
+        }
+        try {
+            final List<DeleteObjectsRequest> deleteRequests = new ArrayList<>();
+            final List<String> partition = new ArrayList<>();
+            for (String key : outstanding) {
+                partition.add(key);
+                if (partition.size() == MAX_BULK_DELETES) {
+                    deleteRequests.add(bulkDelete(blobStore.bucket(), partition));
+                    partition.clear();
+                }
+            }
+            if (partition.isEmpty() == false) {
+                deleteRequests.add(bulkDelete(blobStore.bucket(), partition));
+            }
+            SocketAccess.doPrivilegedVoid( () -> {
+                CosClientException aex = null;
+                for (DeleteObjectsRequest deleteRequest : deleteRequests) {
+                    List<String> keyInRequest = deleteRequest.getKeys().stream().map(DeleteObjectsRequest.KeyVersion::getKey).collect(Collectors.toList());
+                    try {
+                        blobStore.client().deleteObjects(deleteRequest);
+                        outstanding.removeAll(keyInRequest);
+                    } catch (MultiObjectDeleteException e) {
+                        outstanding.removeAll(keyInRequest);
+                        outstanding.addAll(
+                                e.getErrors().stream().map(MultiObjectDeleteException.DeleteError::getKey).collect(Collectors.toList())
+                        );
+                        aex = ExceptionsHelper.useOrSuppress(aex, e);
+                    } catch (CosClientException e) {
+                        aex = ExceptionsHelper.useOrSuppress(aex, e);
+                    }
+                }
+                if (aex != null) {
+                    throw aex;
+                }
+            });
+        } catch (Exception e) {
+            throw new IOException("Failed to delete blobs [" + outstanding + "]", e);
+        }
+        assert outstanding.isEmpty();
+    }
+
+    private static DeleteObjectsRequest bulkDelete(String bucket, List<String> blobs) {
+        return new DeleteObjectsRequest(bucket).withKeys(blobs.toArray(Strings.EMPTY_ARRAY)).withQuiet(true);
+    }
+
+
+    @Override
+    public Map<String, BlobMetaData> listBlobsByPrefix(@Nullable String blobNamePrefix) throws IOException {
+        try {
+            return SocketAccess.doPrivileged( () ->
+                executeListing(generateListObjectsRequest(blobNamePrefix == null ? keyPath : buildKey(blobNamePrefix)))
+                        .stream()
+                        .flatMap(listing -> listing.getObjectSummaries().stream())
+                        .map(summary -> new PlainBlobMetaData(summary.getKey().substring(keyPath.length()), summary.getSize()))
+                        .collect(Collectors.toMap(PlainBlobMetaData::name, Function.identity()))
+            );
+        } catch (CosClientException e) {
+            throw new IOException("Exception when listing blobs by prefix [" + blobNamePrefix + "]", e);
+        }
+
     }
 
     @Override
     public Map<String, BlobMetaData> listBlobs() throws IOException {
         return listBlobsByPrefix(null);
+    }
+
+    @Override
+    public Map<String, BlobContainer> children() throws IOException {
+        try {
+            return executeListing(generateListObjectsRequest(keyPath)).stream()
+                    .flatMap(listing -> listing.getCommonPrefixes().stream())
+                    .map(prefix -> prefix.substring(keyPath.length()))
+                    .filter(name -> name.isEmpty() == false)
+                    .map(name -> name.substring(0, name.length() - 1))
+                    .collect(Collectors.toMap(Function.identity(), name -> blobStore.blobContainer(path().add(name))));
+        } catch (CosClientException e) {
+            throw new IOException("Exception when listing children of [" + path().buildAsString() + ']', e);
+        }
+    }
+
+    private List<ObjectListing> executeListing(ListObjectsRequest listObjectsRequest) {
+        final List<ObjectListing> results = new ArrayList<>();
+        ObjectListing prevListing = null;
+        while (true) {
+            ObjectListing list;
+            if (prevListing != null) {
+                final ObjectListing finalPrevListing = prevListing;
+                list = SocketAccess.doPrivileged(() -> blobStore.client().listNextBatchOfObjects(finalPrevListing));
+            } else {
+                list = SocketAccess.doPrivileged(() -> blobStore.client().listObjects(listObjectsRequest));
+            }
+            results.add(list);
+            if (list.isTruncated()) {
+                prevListing = list;
+            } else {
+                break;
+            }
+        }
+        return results;
+    }
+
+    private ListObjectsRequest generateListObjectsRequest(String keyPath) {
+        ListObjectsRequest listObjectsRequest = new ListObjectsRequest();
+        listObjectsRequest.withBucketName(blobStore.bucket()).withPrefix(keyPath).withDelimiter("/");
+        return listObjectsRequest;
     }
 
     protected String buildKey(String blobName) {
