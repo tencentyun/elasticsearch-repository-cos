@@ -7,6 +7,7 @@ import com.qcloud.cos.auth.COSCredentials;
 import com.qcloud.cos.region.Region;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.cluster.metadata.RepositoryMetaData;
+import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.component.AbstractLifecycleComponent;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeUnit;
@@ -32,7 +33,9 @@ public class COSService {
 
         COSCredentials cred = new BasicCOSCredentials(access_key_id, access_key_secret);
         ClientConfig clientConfig = new ClientConfig(new Region(region));
-        clientConfig.setEndPointSuffix(endPoint);
+        if (Strings.hasLength(endPoint)) {
+            clientConfig.setEndPointSuffix(endPoint);
+        }
         COSClient client = new COSClient(cred, clientConfig);
 
         return client;
