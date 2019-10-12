@@ -34,17 +34,22 @@ public class COSRepository extends BlobStoreRepository {
         super(metadata, settings, namedXContentRegistry);
         String bucket = getSetting(COSClientSettings.BUCKET, metadata);
         String basePath = getSetting(COSClientSettings.BASE_PATH, metadata);
-        String app_id = COSRepository.getSetting(COSClientSettings.APP_ID, metadata);
-        // qcloud-sdk-v5 app_id directly joined with bucket name
-        this.bucket = bucket+"-"+app_id;
+        String app_id = COSClientSettings.APP_ID.get(metadata.settings());
         this.client = cos.getClient();
+        // qcloud-sdk-v5 app_id directly joined with bucket name
+        if (Strings.hasLength(app_id)) {
+            this.bucket = bucket + "-" + app_id;
+            deprecationLogger.deprecated("cos repository bucket already contain app_id, and app_id will not be supported for the cos repository in future releases");
+        } else {
+            this.bucket = bucket;
+        }
 
         if (Strings.hasLength(basePath)) {
-            BlobPath path = new BlobPath();
-            for (String elem : basePath.split(File.separator)) {
-                path = path.add(elem);
+            if (basePath.startsWith("/")) {
+                basePath = basePath.substring(1);
+                deprecationLogger.deprecated("cos repository base_path trimming the leading `/`, and leading `/` will not be supported for the cos repository in future releases");
             }
-            this.basePath = path;
+            this.basePath = new BlobPath().add(basePath);
         } else {
             this.basePath = BlobPath.cleanPath();
         }
