@@ -208,14 +208,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
                     }
                 }
                 for (COSObjectSummary summary : list.getObjectSummaries()) {
-                    /* TODO: 需要联系cos-sdk修改
-                     * 这里cos-sdk-v5有一些问题
-                     * summary.getKey() 返回的path路径缺少开头的路径分隔符"/"
-                     * 导致substring后path被错误截断
-                     */
-                    String oriName = "/" + summary.getKey();
-                    String newKeyPath = !keyPath.startsWith("/") ? "/" + keyPath : keyPath;
-                    String name = oriName.substring(newKeyPath.length());
+                    String name = summary.getKey().substring(keyPath.length());
                     blobsBuilder.put(name, new PlainBlobMetaData(name, summary.getSize()));
                 }
                 if (list.isTruncated()) {
