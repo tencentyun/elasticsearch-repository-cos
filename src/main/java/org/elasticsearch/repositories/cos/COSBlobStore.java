@@ -17,8 +17,7 @@ public class COSBlobStore extends AbstractComponent implements BlobStore {
     private final String bucket;
 
 
-    COSBlobStore(Settings settings, COSClient client, String bucket) {
-        super(settings);
+    COSBlobStore(COSClient client, String bucket) {
         this.client = client;
         this.bucket = bucket;
     }

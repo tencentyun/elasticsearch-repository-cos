@@ -1,9 +1,12 @@
 package org.elasticsearch.repositories.cos;
 
 import com.qcloud.cos.COSClient;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.cluster.metadata.RepositoryMetaData;
 import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.blobstore.BlobStore;
+import org.elasticsearch.common.logging.DeprecationLogger;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.Strings;
@@ -16,6 +19,9 @@ import java.io.File;
 import java.io.IOException;
 
 public class COSRepository extends BlobStoreRepository {
+    private static final Logger logger = LogManager.getLogger(COSRepository.class);
+    private static final DeprecationLogger deprecationLogger = new DeprecationLogger(logger);
+
     public static final String TYPE = "cos";
     private final String bucket;
     private COSClient client;
@@ -52,7 +58,7 @@ public class COSRepository extends BlobStoreRepository {
 
     @Override
     protected COSBlobStore createBlobStore() {
-        return new COSBlobStore(settings,client,bucket);
+        return new COSBlobStore(client,bucket);
     }
 
     @Override
