@@ -28,4 +28,4 @@ src/golang.org
 target/
 *.iml
 .gradle
-build*
+build/
