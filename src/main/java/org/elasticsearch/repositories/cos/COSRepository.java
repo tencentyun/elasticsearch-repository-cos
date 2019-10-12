@@ -44,6 +44,10 @@ public class COSRepository extends BlobStoreRepository {
         this.bucket = bucket+"-"+app_id;
 
         if (Strings.hasLength(basePath)) {
+            if (basePath.startsWith("/")) {
+                basePath = basePath.substring(1);
+                deprecationLogger.deprecated("cos repository base_path trimming the leading `/`, and leading `/` whill not be supported for the cos repository in future releases");
+            }
             this.basePath = new BlobPath().add(basePath);
         } else {
             this.basePath = BlobPath.cleanPath();

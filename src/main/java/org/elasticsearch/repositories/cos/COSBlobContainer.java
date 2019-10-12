@@ -28,8 +28,7 @@ import com.qcloud.cos.model.*;
  */
 public class COSBlobContainer extends AbstractBlobContainer {
 
-    //TODO: 找cos开发确认一次删除最大值
-    private static final int MAX_BULK_DELETES = 500;
+    private static final int MAX_BULK_DELETES = 1000;
     protected final COSBlobStore blobStore;
     protected final String keyPath;
 
@@ -37,18 +36,6 @@ public class COSBlobContainer extends AbstractBlobContainer {
         super(path);
         this.blobStore = blobStore;
         this.keyPath = path.buildAsString();
-    }
-
-    public boolean blobExists(String blobName) {
-        try {
-            SocketAccess.doPrivileged(() ->
-                    blobStore.client().getObjectMetadata(blobStore.bucket(), buildKey(blobName)));
-            return true;
-        } catch (CosClientException e) {
-            return false;
-        } catch (Exception e) {
-            throw new BlobStoreException("failed to check if blob exists", e);
-        }
     }
 
     @Override
@@ -67,17 +54,11 @@ public class COSBlobContainer extends AbstractBlobContainer {
         }
     }
 
+    /**
+     * 可以忽略failIfAlreadyExists，因为cos会自动覆盖重名的object
+     */
     @Override
     public void writeBlob(String blobName, InputStream inputStream, long blobSize, boolean failIfAlreadyExists) throws IOException {
-        //TODO: 确认COS这里的逻辑，是否上传同名的object会报错
-        if (failIfAlreadyExists) {
-            if (blobExists(blobName)) {
-                throw new FileAlreadyExistsException("blob [" + blobName + "] already exists, cannot overwrite");
-            }
-        } else {
-            this.deleteBlob(blobName);
-        }
-
         if (blobSize <= COSService.MAX_SINGLE_FILE_SIZE.getBytes()) {
             doSingleUpload(blobName, inputStream, blobSize);
         } else {
@@ -179,10 +160,6 @@ public class COSBlobContainer extends AbstractBlobContainer {
 
     @Override
     public void deleteBlob(String blobName) throws IOException {
-        if (!blobExists(blobName)) {
-            throw new NoSuchFileException("Blob [" + blobName + "] does not exist");
-        }
-
         try {
             SocketAccess.doPrivilegedVoid(() ->
                     blobStore.client().deleteObject(blobStore.bucket(), buildKey(blobName)));
@@ -215,10 +192,12 @@ public class COSBlobContainer extends AbstractBlobContainer {
                     blobsToDelete.add(cosObjectSummary.getKey());
                 });
                 if (list.isTruncated()) {
+                    doDeleteBlobs(blobsToDelete, false);
                     prevListing = list;
                 } else {
                     final List<String> lastBlobToDelete = new ArrayList<>(blobsToDelete);
                     lastBlobToDelete.add(keyPath);
+                    doDeleteBlobs(lastBlobToDelete, false);
                     break;
                 }
             }
@@ -291,13 +270,11 @@ public class COSBlobContainer extends AbstractBlobContainer {
     @Override
     public Map<String, BlobMetaData> listBlobsByPrefix(@Nullable String blobNamePrefix) throws IOException {
         try {
-            return SocketAccess.doPrivileged( () ->
-                executeListing(generateListObjectsRequest(blobNamePrefix == null ? keyPath : buildKey(blobNamePrefix)))
+            return executeListing(generateListObjectsRequest(blobNamePrefix == null ? keyPath : buildKey(blobNamePrefix)))
                         .stream()
                         .flatMap(listing -> listing.getObjectSummaries().stream())
                         .map(summary -> new PlainBlobMetaData(summary.getKey().substring(keyPath.length()), summary.getSize()))
-                        .collect(Collectors.toMap(PlainBlobMetaData::name, Function.identity()))
-            );
+                        .collect(Collectors.toMap(PlainBlobMetaData::name, Function.identity()));
         } catch (CosClientException e) {
             throw new IOException("Exception when listing blobs by prefix [" + blobNamePrefix + "]", e);
         }

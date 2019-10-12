@@ -27,3 +27,5 @@ src/golang.org
 .idea/
 target/
 *.iml
+.gradle
+build*
