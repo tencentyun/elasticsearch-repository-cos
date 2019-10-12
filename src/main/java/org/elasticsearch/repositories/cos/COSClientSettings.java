@@ -17,7 +17,7 @@ public class COSClientSettings {
     public static final Setting<String> ACCESS_KEY_SECRET = Setting
             .simpleString("access_key_secret", Setting.Property.NodeScope, Setting.Property.Dynamic);
     public static final Setting<String> APP_ID = Setting
-            .simpleString("app_id", Setting.Property.NodeScope, Setting.Property.Dynamic);
+            .simpleString("app_id", "", Setting.Property.NodeScope, Setting.Property.Dynamic);
     public static final Setting<String> BUCKET =
             simpleString("bucket", Setting.Property.NodeScope, Setting.Property.Dynamic);
     public static final Setting<String> BASE_PATH =

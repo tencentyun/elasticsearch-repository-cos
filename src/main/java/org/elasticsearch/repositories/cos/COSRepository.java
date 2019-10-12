@@ -38,15 +38,19 @@ public class COSRepository extends BlobStoreRepository {
         this.service = cos;
         String bucket = getSetting(COSClientSettings.BUCKET, metadata);
         String basePath = getSetting(COSClientSettings.BASE_PATH, metadata);
-        String app_id = COSRepository.getSetting(COSClientSettings.APP_ID, metadata);
+        String app_id = COSClientSettings.APP_ID.get(metadata.settings());
         // qcloud-sdk-v5 app_id directly joined with bucket name
-        // TODO: 考虑不要在让用户传appid的参数，因为现在bucket name直接就是带着appid了，考虑两个做兼容，并写deprecation log
-        this.bucket = bucket+"-"+app_id;
+        if (Strings.hasLength(app_id)) {
+            this.bucket = bucket + "-" + app_id;
+            deprecationLogger.deprecated("cos repository bucket already contain app_id, and app_id will not be supported for the cos repository in future releases");
+        } else {
+            this.bucket = bucket;
+        }
 
         if (Strings.hasLength(basePath)) {
             if (basePath.startsWith("/")) {
                 basePath = basePath.substring(1);
-                deprecationLogger.deprecated("cos repository base_path trimming the leading `/`, and leading `/` whill not be supported for the cos repository in future releases");
+                deprecationLogger.deprecated("cos repository base_path trimming the leading `/`, and leading `/` will not be supported for the cos repository in future releases");
             }
             this.basePath = new BlobPath().add(basePath);
         } else {
