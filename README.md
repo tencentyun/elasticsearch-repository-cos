@@ -271,4 +271,4 @@ DELETE /restored_index_3
 反馈
 ----
 
-如在使用中有相关的问题，欢迎提交issue到[地址1](https://github.com/tencentyun/elasticsearch-repository-cos/issues)或[地址2](https://github.com/Ethan-Zhang/elasticsearch-repository-cos/issues)
+如在使用中有相关的问题，欢迎提交issue
