@@ -1,11 +1,27 @@
-## 编译安装
+COS Repository for Elasticsearch
+================================
+
+COS Repository plugin 是一个可以将Elasticsearch数据通过腾讯云对象存储服务COS进行备份恢复的插件。
+
+编译安装
+-------
+
+7.x 之前的版本，使用maven编译
 ```
 mvn clean package
 #在release中找到zip压缩包
 #执行插件安装
 /$you_elasticsearch_dir/bin/elasticsearch-plugin install file:///$you_plugin_path/elasticsearch-cos-x.x.zip
 ```
-## 创建仓库
+7.x 之后的版本，使用gradle编译
+```
+gradle build
+```
+
+使用方法
+-------
+
+### 创建仓库
 
 ```
 PUT _snapshot/my_cos_backup
@@ -29,7 +45,7 @@ PUT _snapshot/my_cos_backup
 * app_id: 腾讯云账号 APPID，将在6.8之后的版本废弃，app_id 已包含在bucket参数中。
 
 
-## 列出仓库信息
+### 列出仓库信息
 ```
 GET _snapshot
 ```
@@ -37,9 +53,9 @@ GET _snapshot
 也可以使用```GET _snapshot/my_cos_backup```获取指定的仓库信息
 
 
-## 创建快照
+### 创建快照
 
-### 备份所有索引
+#### 备份所有索引
 
 ```
 PUT _snapshot/my_cos_backup/snapshot_1
@@ -51,16 +67,16 @@ PUT _snapshot/my_cos_backup/snapshot_1?wait_for_completion=true
 ```
 注意，命令执行的时间与索引大小相关。
 
-### 备份指定索引
+#### 备份指定索引
 可以在创建快照的时候指定要备份哪些索引：
 ```
 PUT _snapshot/my_cos_backup/snapshot_2
 {
-    "indices": "index_1, index_2"
+    "indices": "index_1,index_2"
 }
 ```
 
-## 查询快照
+### 查询快照
 
 查询单个快照信息
 ```
@@ -95,14 +111,14 @@ GET _snapshot/my_cos_backup/snapshot_1
 }
 ```
 
-## 删除快照
+### 删除快照
 删除指定的快照
 ```
 DELETE _snapshot/my_cos_backup/snapshot_1
 ```
 注意，如果还未完成的快照，删除快照命令依旧会执行，并取消快照创建进程
 
-## 从快照恢复
+### 从快照恢复
 ```
 POST _snapshot/my_cos_backup/snapshot_1/_restore
 ```
@@ -112,15 +128,15 @@ POST _snapshot/my_cos_backup/snapshot_1/_restore
 ```
 POST /_snapshot/my_cos_backup/snapshot_1/_restore
 {
-    "indices": "index_1", <1>
-    "rename_pattern": "index_(.+)", <2>
-    "rename_replacement": "restored_index_1" <3>
+    "indices": "index_1",
+    "rename_pattern": "index_(.+)",
+    "rename_replacement": "restored_index_1"
 }
 ```
-* <1> 只恢复 index_1 索引，忽略快照中存在的其余索引。
-* <2> 查找所提供的模式能匹配上的正在恢复的索引。
-* <3> 然后把它们重命名成替代的模式。
-## 查询快照恢复状态
+* 只恢复 index_1 索引，忽略快照中存在的其余索引。
+* 查找所提供的模式能匹配上的正在恢复的索引。
+* 然后把它们重命名成替代的模式。
+### 查询快照恢复状态
 通过执行_recovery命令，可以查看快照恢复的状态，监控快照恢复的进度。   
 这个 API 可以为你在恢复的指定索引单独调用：
 ```
@@ -239,8 +255,20 @@ GET index_1/_recovery
 
 输出会列出所有目前正在经历恢复的索引，然后列出这些索引里的所有分片。每个分片里会有启动/停止时间、持续时间、恢复百分比、传输字节数等统计值。
 
-## 取消快照恢复
+### 取消快照恢复
 ```
 DELETE /restored_index_3
 ```
 如果 restored\_index\_3 正在恢复中，这个删除命令会停止恢复，同时删除所有已经恢复到集群里的数据。
+
+常见问题
+-------
+1. 提示找不到bucket？
+6.x版本中，COS的bucket名中已经包括了appid，如果使用形如buceket1-11212121的bucket名，请不要再传递appid参数。如使用早期不包含appid的bucket名，请传递appid参数。
+2. 创建快照时报找不到index？
+请确认indices参数中传递的索引列表中索引名是否正确，且不要包含空格。
+
+反馈
+----
+
+如在使用中有相关的问题，欢迎提交issue到[地址1](https://github.com/tencentyun/elasticsearch-repository-cos/issues)或[地址2](https://github.com/Ethan-Zhang/elasticsearch-repository-cos/issues)
