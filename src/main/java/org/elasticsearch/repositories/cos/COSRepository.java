@@ -14,8 +14,6 @@ import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.repositories.RepositoryException;
 import org.elasticsearch.repositories.blobstore.BlobStoreRepository;
 
-import java.io.IOException;
-
 public class COSRepository extends BlobStoreRepository {
     private static final Logger logger = LogManager.getLogger(COSRepository.class);
     private static final DeprecationLogger deprecationLogger = new DeprecationLogger(logger);
@@ -28,7 +26,7 @@ public class COSRepository extends BlobStoreRepository {
     private final ByteSizeValue chunkSize;
 
     COSRepository(RepositoryMetaData metadata, Settings settings,
-                 NamedXContentRegistry namedXContentRegistry, COSService cos) throws IOException {
+                 NamedXContentRegistry namedXContentRegistry, COSService cos) {
         super(metadata, settings, namedXContentRegistry);
         String bucket = getSetting(COSClientSettings.BUCKET, metadata);
         String basePath = getSetting(COSClientSettings.BASE_PATH, metadata);

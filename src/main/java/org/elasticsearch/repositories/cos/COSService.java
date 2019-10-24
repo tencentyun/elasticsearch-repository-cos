@@ -9,7 +9,6 @@ import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.cluster.metadata.RepositoryMetaData;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.component.AbstractLifecycleComponent;
-import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
 
@@ -18,8 +17,7 @@ public class COSService extends AbstractLifecycleComponent {
     private COSClient client;
     public static final ByteSizeValue MAX_SINGLE_FILE_SIZE = new ByteSizeValue(5, ByteSizeUnit.GB);
 
-    COSService(Settings settings, RepositoryMetaData metaData) {
-        super(settings);
+    COSService(RepositoryMetaData metaData) {
         this.client = createClient(metaData);
     }
 

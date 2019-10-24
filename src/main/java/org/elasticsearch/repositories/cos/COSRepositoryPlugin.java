@@ -9,7 +9,6 @@ import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.plugins.RepositoryPlugin;
-import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.repositories.Repository;
 
@@ -18,8 +17,8 @@ import org.elasticsearch.repositories.Repository;
  */
 public class COSRepositoryPlugin extends Plugin implements RepositoryPlugin {
 
-    protected COSService createStorageService(Settings settings, RepositoryMetaData metaData) {
-        return new COSService(settings, metaData);
+    protected COSService createStorageService(RepositoryMetaData metaData) {
+        return new COSService(metaData);
     }
 
     @Override
@@ -27,7 +26,7 @@ public class COSRepositoryPlugin extends Plugin implements RepositoryPlugin {
                                                                      NamedXContentRegistry namedXContentRegistry) {
         return Collections.singletonMap(COSRepository.TYPE,
                 (metadata) -> new COSRepository(metadata, env.settings(), namedXContentRegistry,
-                        createStorageService(env.settings(), metadata)));
+                        createStorageService(metadata)));
     }
 
     @Override

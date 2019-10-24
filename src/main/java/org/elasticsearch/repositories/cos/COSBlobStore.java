@@ -7,12 +7,10 @@ import com.qcloud.cos.model.ObjectListing;
 import org.elasticsearch.common.blobstore.BlobContainer;
 import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.blobstore.BlobStore;
-import org.elasticsearch.common.component.AbstractComponent;
-import org.elasticsearch.common.settings.Settings;
 
 import java.util.ArrayList;
 
-public class COSBlobStore extends AbstractComponent implements BlobStore {
+public class COSBlobStore implements BlobStore {
     private final COSClient client;
     private final String bucket;
 
