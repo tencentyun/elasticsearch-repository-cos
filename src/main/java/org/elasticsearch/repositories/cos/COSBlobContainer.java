@@ -159,6 +159,11 @@ public class COSBlobContainer extends AbstractBlobContainer {
 
     @Override
     public void deleteBlob(String blobName) throws IOException {
+        deleteBlobIgnoringIfNotExists(blobName);
+    }
+
+    @Override
+    public void deleteBlobIgnoringIfNotExists(String blobName) throws IOException {
         try {
             SocketAccess.doPrivilegedVoid(() ->
                     blobStore.client().deleteObject(blobStore.bucket(), buildKey(blobName)));
@@ -187,7 +192,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
                 final List<String> blobsToDelete = new ArrayList<>();
                 list.getObjectSummaries().forEach(cosObjectSummary -> {
                     deletedBlobs.incrementAndGet();
-                    deletedBytes.incrementAndGet();
+                    deletedBytes.addAndGet(cosObjectSummary.getSize());
                     blobsToDelete.add(cosObjectSummary.getKey());
                 });
                 if (list.isTruncated()) {
@@ -288,6 +293,13 @@ public class COSBlobContainer extends AbstractBlobContainer {
     @Override
     public Map<String, BlobContainer> children() throws IOException {
         try {
+            Map<String, BlobContainer> a = executeListing(generateListObjectsRequest(keyPath)).stream()
+                    .flatMap(listing -> listing.getCommonPrefixes().stream())
+                    .map(prefix -> prefix.substring(keyPath.length()))
+                    .filter(name -> name.isEmpty() == false)
+                    .map(name -> name.substring(0, name.length() - 1))
+                    .collect(Collectors.toMap(Function.identity(), name -> blobStore.blobContainer(path().add(name))));
+
             return executeListing(generateListObjectsRequest(keyPath)).stream()
                     .flatMap(listing -> listing.getCommonPrefixes().stream())
                     .map(prefix -> prefix.substring(keyPath.length()))

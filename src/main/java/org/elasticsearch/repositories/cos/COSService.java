@@ -9,9 +9,13 @@ import org.elasticsearch.cluster.metadata.RepositoryMetaData;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
+import org.elasticsearch.repositories.RepositoryException;
+
+import java.io.Closeable;
+import java.io.IOException;
 
 //TODO: 考虑是否需要继承closeable，处理连接池等问题
-public class COSService {
+public class COSService implements Closeable {
 
     private COSClient client;
     public static final ByteSizeValue MAX_SINGLE_FILE_SIZE = new ByteSizeValue(5, ByteSizeUnit.GB);
@@ -21,9 +25,12 @@ public class COSService {
     }
 
     private synchronized COSClient createClient(RepositoryMetaData metaData) {
-        String access_key_id = COSRepository.getSetting(COSClientSettings.ACCESS_KEY_ID, metaData);
-        String access_key_secret = COSRepository.getSetting(COSClientSettings.ACCESS_KEY_SECRET, metaData);
-        String region = COSRepository.getSetting(COSClientSettings.REGION, metaData);
+        String access_key_id = COSClientSettings.ACCESS_KEY_ID.get(metaData.settings()).toString();
+        String access_key_secret = COSClientSettings.ACCESS_KEY_SECRET.get(metaData.settings()).toString();
+        String region = COSClientSettings.REGION.get(metaData.settings());
+        if (region == null || !Strings.hasLength(region)) {
+            throw new RepositoryException(metaData.name(), "No region defined for cos repository");
+        }
         String endPoint = COSClientSettings.CosEndPoint.get(metaData.settings());
 
         COSCredentials cred = new BasicCOSCredentials(access_key_id, access_key_secret);
@@ -38,6 +45,11 @@ public class COSService {
 
     public COSClient getClient() {
         return this.client;
+    }
+
+    @Override
+    public void close() throws IOException {
+        this.client.shutdown();
     }
 
 }
