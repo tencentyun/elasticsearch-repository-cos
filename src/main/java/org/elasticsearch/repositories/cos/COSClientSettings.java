@@ -20,7 +20,7 @@ public class COSClientSettings {
     public static final Setting<String> BUCKET =
             Setting.simpleString("bucket", Setting.Property.NodeScope, Setting.Property.Dynamic);
     public static final Setting<String> BASE_PATH =
-            Setting.simpleString("base_path", Setting.Property.NodeScope, Setting.Property.Dynamic);
+            Setting.simpleString("base_path", "", Setting.Property.NodeScope, Setting.Property.Dynamic);
     public static final Setting<Boolean> COMPRESS =
             Setting.boolSetting("compress", false, Setting.Property.NodeScope, Setting.Property.Dynamic);
     public static final Setting<ByteSizeValue> CHUNK_SIZE =
