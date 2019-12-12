@@ -1,7 +1,5 @@
 package org.elasticsearch.repositories.cos;
 
-import org.elasticsearch.common.settings.SecureSetting;
-import org.elasticsearch.common.settings.SecureString;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
@@ -13,13 +11,13 @@ public class COSClientSettings {
     private static final ByteSizeValue MAX_CHUNK_SIZE = new ByteSizeValue(1, ByteSizeUnit.GB);
 
     public static final Setting<String> REGION =
-            Setting.simpleString("region", Property.NodeScope, Property.Dynamic);
-    public static final Setting<SecureString> ACCESS_KEY_ID =
-            SecureSetting.secureString("access_key_id", null);
-    public static final Setting<SecureString> ACCESS_KEY_SECRET =
-            SecureSetting.secureString("access_key_secret", null);
-    public static final Setting<String> APP_ID = Setting
-            .simpleString("app_id", "", Setting.Property.NodeScope, Setting.Property.Dynamic);
+            simpleString("region", Property.NodeScope, Property.Dynamic);
+    public static final Setting<String> ACCESS_KEY_ID =
+            simpleString("access_key_id", Setting.Property.NodeScope, Setting.Property.Dynamic);
+    public static final Setting<String> ACCESS_KEY_SECRET =
+            simpleString("access_key_secret", Setting.Property.NodeScope, Setting.Property.Dynamic);
+    public static final Setting<String> APP_ID =
+            simpleString("app_id", "", Setting.Property.NodeScope, Setting.Property.Dynamic);
     public static final Setting<String> BUCKET =
             simpleString("bucket", Setting.Property.NodeScope, Setting.Property.Dynamic);
     public static final Setting<String> BASE_PATH =
@@ -29,5 +27,5 @@ public class COSClientSettings {
     public static final Setting<ByteSizeValue> CHUNK_SIZE =
             byteSizeSetting("chunk_size", MAX_CHUNK_SIZE, MIN_CHUNK_SIZE, MAX_CHUNK_SIZE,
                     Setting.Property.NodeScope, Setting.Property.Dynamic);
-    public static final Setting<String> CosEndPoint = Setting.simpleString("cosEndPoint", "", Property.NodeScope, Property.Dynamic);
+    public static final Setting<String> END_POINT = Setting.simpleString("end_point", "", Property.NodeScope, Property.Dynamic);
 }

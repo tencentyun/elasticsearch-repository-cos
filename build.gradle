@@ -1,3 +1,5 @@
+import org.elasticsearch.gradle.MavenFilteringHack
+
 buildscript {
     ext {
         pluginName = project.properties['pluginName']
@@ -74,6 +76,7 @@ bundlePlugin {
 
 test {
     exclude '**/CosRepositoryThirdPartyTests.class'
+    dependsOn processTestResources
 }
 
 String cosAccessKeyId = System.getenv("qcloud_cos_access_key_id")
@@ -94,6 +97,21 @@ task thirdPartyTest(type: Test) {
 
 thirdPartyTest {
     dependsOn tasks.bundlePlugin
+}
+
+processTestResources {
+    Map<String, Object> expansions = [
+            'accessKeyId': cosAccessKeyId,
+            'accessKeySecret': cosAccessKeySecret,
+            'cosBucket': cosBucket,
+            'cosBasePath': cosBasePath,
+    ]
+    inputs.properties(expansions)
+    MavenFilteringHack.filter(it, expansions)
+}
+
+integTest {
+    dependsOn processTestResources
 }
 
 // elasticsearch.esplugin task configure

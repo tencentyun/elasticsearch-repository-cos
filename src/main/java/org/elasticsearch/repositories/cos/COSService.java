@@ -25,13 +25,13 @@ public class COSService implements Closeable {
     }
 
     private synchronized COSClient createClient(RepositoryMetaData metaData) {
-        String access_key_id = COSClientSettings.ACCESS_KEY_ID.get(metaData.settings()).toString();
-        String access_key_secret = COSClientSettings.ACCESS_KEY_SECRET.get(metaData.settings()).toString();
+        String access_key_id = COSClientSettings.ACCESS_KEY_ID.get(metaData.settings());
+        String access_key_secret = COSClientSettings.ACCESS_KEY_SECRET.get(metaData.settings());
         String region = COSClientSettings.REGION.get(metaData.settings());
         if (region == null || !Strings.hasLength(region)) {
             throw new RepositoryException(metaData.name(), "No region defined for cos repository");
         }
-        String endPoint = COSClientSettings.CosEndPoint.get(metaData.settings());
+        String endPoint = COSClientSettings.END_POINT.get(metaData.settings());
 
         COSCredentials cred = new BasicCOSCredentials(access_key_id, access_key_secret);
         ClientConfig clientConfig = new ClientConfig(new Region(region));
