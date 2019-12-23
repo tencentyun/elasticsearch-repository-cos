@@ -33,8 +33,8 @@ public class CosRepositoryThirdPartyTests extends AbstractThirdPartyRepositoryTe
         assertThat(System.getProperty("bucket"), not(blankOrNullString()));
 
         MockSecureSettings secureSettings = new MockSecureSettings();
-        secureSettings.setString("access_key_id", System.getProperty("access_key_id"));
-        secureSettings.setString("access_key_secret", System.getProperty("access_key_secret"));
+        //secureSettings.setString("access_key_id", System.getProperty("access_key_id"));
+        //secureSettings.setString("access_key_secret", System.getProperty("access_key_secret"));
         return secureSettings;
     }
 
@@ -42,15 +42,15 @@ public class CosRepositoryThirdPartyTests extends AbstractThirdPartyRepositoryTe
     protected void createRepository(String repoName) {
         final Client client = client();
 
-        MockSecureSettings secureSettings = new MockSecureSettings();
-        secureSettings.setString("access_key_id", System.getProperty("access_key_id"));
-        secureSettings.setString("access_key_secret", System.getProperty("access_key_secret"));
+        //MockSecureSettings secureSettings = new MockSecureSettings();
+        //secureSettings.setString("access_key_id", System.getProperty("access_key_id"));
+        //secureSettings.setString("access_key_secret", System.getProperty("access_key_secret"));
 
         AcknowledgedResponse putReposirotyResponse =
                 client.admin().cluster().preparePutRepository(repoName)
                 .setType(COSRepository.TYPE)
                 .setSettings(Settings.builder()
-                        .setSecureSettings(secureSettings)
+                        //.setSecureSettings(secureSettings)
                         .put("access_key_id", System.getProperty("access_key_id"))
                         .put("access_key_secret", System.getProperty("access_key_secret"))
                         .put("bucket",System.getProperty("bucket"))
