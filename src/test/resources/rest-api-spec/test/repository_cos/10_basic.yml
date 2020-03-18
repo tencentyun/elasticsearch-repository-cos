@@ -13,4 +13,4 @@
     - do:
         nodes.info: {}
 
-    - contains:  { nodes.$master.plugins: { name: CosRepository } }
+    - contains:  { nodes.$master.plugins: { name: repository-cos } }
