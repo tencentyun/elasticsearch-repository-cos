@@ -191,33 +191,36 @@ public class COSBlobContainer extends AbstractBlobContainer {
 
     @Override
     public Map<String, BlobMetaData> listBlobsByPrefix(@Nullable String blobNamePrefix) throws IOException {
-        return SocketAccess.doPrivileged((PrivilegedAction<Map<String, BlobMetaData>>) () -> {
+        try {
+            return SocketAccess.doPrivileged((PrivilegedAction<Map<String, BlobMetaData>>) () -> {
             MapBuilder<String, BlobMetaData> blobsBuilder = MapBuilder.newMapBuilder();
             ObjectListing prevListing = null;
-
-            while (true) {
-                ObjectListing list;
-                if (prevListing != null) {
-                    list = blobStore.client().listNextBatchOfObjects(prevListing);
-                } else {
-                    if (blobNamePrefix != null) {
-                        list = blobStore.client().listObjects(blobStore.bucket(), buildKey(blobNamePrefix));
+                while (true) {
+                    ObjectListing list;
+                    if (prevListing != null) {
+                        list = blobStore.client().listNextBatchOfObjects(prevListing);
                     } else {
-                        list = blobStore.client().listObjects(blobStore.bucket(), keyPath);
+                        if (blobNamePrefix != null) {
+                            list = blobStore.client().listObjects(blobStore.bucket(), buildKey(blobNamePrefix));
+                        } else {
+                            list = blobStore.client().listObjects(blobStore.bucket(), keyPath);
+                        }
+                    }
+                    for (COSObjectSummary summary : list.getObjectSummaries()) {
+                        String name = summary.getKey().substring(keyPath.length());
+                        blobsBuilder.put(name, new PlainBlobMetaData(name, summary.getSize()));
+                    }
+                    if (list.isTruncated()) {
+                        prevListing = list;
+                    } else {
+                        break;
                     }
                 }
-                for (COSObjectSummary summary : list.getObjectSummaries()) {
-                    String name = summary.getKey().substring(keyPath.length());
-                    blobsBuilder.put(name, new PlainBlobMetaData(name, summary.getSize()));
-                }
-                if (list.isTruncated()) {
-                    prevListing = list;
-                } else {
-                    break;
-                }
-            }
-            return blobsBuilder.immutableMap();
+                return blobsBuilder.immutableMap();
         });
+        } catch (final CosClientException e) {
+            throw new IOException("Exception when listing blobs by prefix [" + blobNamePrefix + "]", e);
+        }
     }
 
     @Override
