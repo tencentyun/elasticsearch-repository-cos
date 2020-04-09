@@ -12,7 +12,7 @@ setup:
         settings:
           access_key_id: ${accessKeyId}
           access_key_secret: ${accessKeySecret}
-          region: ap-guangzhou
+          region: ${region}
           bucket: ${cosBucket}
           base_path: "${cosBasePath}"
 
@@ -42,7 +42,7 @@ setup:
         settings:
           access_key_id: ${accessKeyId}
           access_key_secret: ${accessKeySecret}
-          region: ap-guangzhou
+          region: ${region}
           bucket: ${cosBucket}
           base_path: "${cosBasePath}"
           end_point: a-broken-endpoint
@@ -57,7 +57,7 @@ setup:
         settings:
           access_key_id: ${accessKeyId}
           access_key_secret: ${accessKeySecret}
-          region: ap-guangzhou
+          region: ${region}
           bucket: ${cosBucket}
           base_path: "${cosBasePath}"
           end_point: a-broken-endpoint
@@ -276,7 +276,7 @@ setup:
       body:
         type: cos
         settings:
-          region: ap-guangzhou
+          region: ${region}
           bucket: zhhdmasdfguadndsafduasgasfdndsafsdgfueasfdsaf
 
 ---
@@ -289,7 +289,7 @@ setup:
       body:
         type: cos
         settings:
-          region: ap-guangzhou
+          region: ${region}
           readonly: true
           bucket: zhhdmasdfguadndsafduasgasfdndsafsdgfueasfdsaf
 
