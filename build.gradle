@@ -29,10 +29,6 @@ apply plugin: 'elasticsearch.esplugin'
 apply plugin: 'maven'
 apply plugin: 'license'
 
-compileJava.options.encoding = 'UTF-8'
-compileTestJava.options.encoding = 'UTF-8'
-javadoc.options.encoding = 'UTF-8'
-
 ext.projectSubstitutions = [:]
 // license of this project
 licenseFile = rootProject.file('LICENSE.txt')
