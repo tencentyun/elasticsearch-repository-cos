@@ -108,6 +108,7 @@ processTestResources {
             'accessKeySecret': cosAccessKeySecret,
             'cosBucket': cosBucket,
             'cosBasePath': cosBasePath,
+            'region': cosRegion,
     ]
     inputs.properties(expansions)
     MavenFilteringHack.filter(it, expansions)
