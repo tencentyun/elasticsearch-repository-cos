@@ -2,6 +2,7 @@ package org.elasticsearch.repositories.cos;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.NoSuchFileException;
 import java.security.PrivilegedAction;
 import java.util.ArrayList;
@@ -70,7 +71,11 @@ public class COSBlobContainer extends AbstractBlobContainer {
      * This implementation ignores the failIfAlreadyExists flag as the COS API has no way to enforce this due to its weak consistency model.
      */
     @Override
-    public void writeBlob(String blobName, InputStream inputStream, long blobSize, boolean failIfAlreadyExists) throws IOException {
+    public void writeBlob(String blobName, InputStream inputStream, long blobSize) throws IOException {
+        if (blobExists(blobName)) {
+            throw new FileAlreadyExistsException("blob [" + blobName + "] already exists, cannot overwrite");
+        }
+
         if (blobSize <= COSService.MAX_SINGLE_FILE_SIZE.getBytes()) {
             doSingleUpload(blobName, inputStream, blobSize);
         } else {
@@ -186,6 +191,16 @@ public class COSBlobContainer extends AbstractBlobContainer {
                     blobStore.client().deleteObject(blobStore.bucket(), buildKey(blobName)));
         } catch (CosClientException e) {
             throw new IOException("Exception when deleting blob [" + blobName + "]", e);
+        }
+    }
+
+    @Override
+    public void move(String sourceBlobName, String targetBlobName) throws IOException {
+        try {
+            this.blobStore.client().copyObject(blobStore.bucket(), buildKey(sourceBlobName), blobStore.bucket(), buildKey(targetBlobName));
+            this.blobStore.client().deleteObject(blobStore.bucket(), buildKey(sourceBlobName));
+        } catch(CosClientException e) {
+            throw new IOException("Exception when copy blob from " + sourceBlobName + " to " + targetBlobName, e);
         }
     }
 
