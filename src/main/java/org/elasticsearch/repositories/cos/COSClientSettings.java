@@ -19,7 +19,7 @@ public class COSClientSettings {
     public static final Setting<String> APP_ID = Setting
             .simpleString("app_id", Setting.Property.NodeScope, Setting.Property.Dynamic);
     public static final Setting<String> BUCKET =
-            simpleString("bucket", Setting.Property.NodeScope, Setting.Property.Dynamic);
+            simpleString("buckete", Setting.Property.NodeScope, Setting.Property.Dynamic);
     public static final Setting<String> BASE_PATH =
             simpleString("base_path", Setting.Property.NodeScope, Setting.Property.Dynamic);
     public static final Setting<Boolean> COMPRESS =
