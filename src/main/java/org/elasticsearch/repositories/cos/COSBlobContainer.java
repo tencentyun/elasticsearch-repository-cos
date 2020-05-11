@@ -78,6 +78,11 @@ public class COSBlobContainer extends AbstractBlobContainer {
         }
     }
 
+    @Override
+    public void writeBlobAtomic(String blobName, InputStream inputStream, long blobSize, boolean failIfAlreadyExists) throws IOException {
+        writeBlob(blobName, inputStream, blobSize, failIfAlreadyExists);
+    }
+
     void doSingleUpload(String blobName, InputStream inputStream, long blobSize) throws IOException {
         if (blobSize > COSService.MAX_SINGLE_FILE_SIZE.getBytes()) {
             throw new IllegalArgumentException("Upload request size [" + blobSize + "] can't be larger than max single file size");
