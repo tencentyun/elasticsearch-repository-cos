@@ -6,10 +6,10 @@
 
     <groupId>com.tencent.cloud.es</groupId>
     <artifactId>repository-cos</artifactId>
-    <version>6.3.1</version>
+    <version>6.2.4</version>
 
     <properties>
-        <elasticsearch.version>6.3.1</elasticsearch.version>
+        <elasticsearch.version>6.2.4</elasticsearch.version>
         <maven.compiler.target>1.8</maven.compiler.target>
         <project.description>elasticsearch-repository-cos</project.description>
         <elasticsearch.assembly.descriptor>${project.basedir}/src/main/assemblies/plugin.xml

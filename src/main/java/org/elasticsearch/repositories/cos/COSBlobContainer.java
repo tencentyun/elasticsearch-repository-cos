@@ -180,17 +180,10 @@ public class COSBlobContainer extends AbstractBlobContainer {
         } catch (BlobStoreException e) {
             throw new IOException("Exception when check blob exists [" + blobName + "] " + e);
         }
-        deleteBlobIgnoringIfNotExists(blobName);
-    }
-
-    @Override
-    public void deleteBlobIgnoringIfNotExists(String blobName) throws IOException {
-        // There is no way to know if an non-versioned object existed before the deletion
         try {
-            SocketAccess.doPrivilegedVoid(() ->
-                    blobStore.client().deleteObject(blobStore.bucket(), buildKey(blobName)));
-        } catch (CosClientException e) {
-            throw new IOException("Exception when deleting blob [" + blobName + "]", e);
+            blobStore.client().deleteObject(blobStore.bucket(), buildKey(blobName));
+        } catch(CosClientException e) {
+            throw new IOException("Exception when deleting blob " + blobName, e);
         }
     }
 
