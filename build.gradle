@@ -134,6 +134,6 @@ licenseTest.enabled = false
 
 
 TestClustersRegistry registry = project.rootProject.extensions.create("testClustersRegistry", TestClustersRegistry)
-TestClustersPlugin.configureClaimClustersHook(project.gradle, registry)
-TestClustersPlugin.configureStartClustersHook(project.gradle, registry)
-TestClustersPlugin.configureStopClustersHook(project.gradle, registry)
+//TestClustersPlugin.configureClaimClustersHook(project.gradle, registry)
+//TestClustersPlugin.configureStartClustersHook(project.gradle, registry)
+//TestClustersPlugin.configureStopClustersHook(project.gradle, registry)

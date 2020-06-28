@@ -3,6 +3,7 @@ package org.elasticsearch.repositories.cos;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.cluster.metadata.RepositoryMetaData;
+import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.logging.DeprecationLogger;
 import org.elasticsearch.common.settings.Setting;
@@ -34,8 +35,8 @@ public class COSRepository extends BlobStoreRepository {
     COSRepository(RepositoryMetaData metadata,
                   NamedXContentRegistry namedXContentRegistry,
                   COSService cos,
-                  ThreadPool threadpool) {
-        super(metadata, COMPRESS_SETTING.get(metadata.settings()), namedXContentRegistry, threadpool);
+                  final ClusterService clusterService) {
+        super(metadata, COMPRESS_SETTING.get(metadata.settings()), namedXContentRegistry, clusterService);
         this.service = cos;
         String bucket = COSClientSettings.BUCKET.get(metadata.settings());
         if (bucket == null || !Strings.hasLength(bucket)) {

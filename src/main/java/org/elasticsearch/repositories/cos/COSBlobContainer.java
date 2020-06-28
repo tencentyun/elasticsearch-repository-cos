@@ -158,21 +158,6 @@ public class COSBlobContainer extends AbstractBlobContainer {
     }
 
     @Override
-    public void deleteBlob(String blobName) throws IOException {
-        deleteBlobIgnoringIfNotExists(blobName);
-    }
-
-    @Override
-    public void deleteBlobIgnoringIfNotExists(String blobName) throws IOException {
-        try {
-            SocketAccess.doPrivilegedVoid(() ->
-                    blobStore.client().deleteObject(blobStore.bucket(), buildKey(blobName)));
-        } catch (CosClientException e) {
-            throw new IOException("Exception when deleting blob [" + blobName + "]", e);
-        }
-    }
-
-    @Override
     public DeleteResult delete() throws IOException {
         final AtomicLong deletedBlobs = new AtomicLong();
         final AtomicLong deletedBytes = new AtomicLong();
