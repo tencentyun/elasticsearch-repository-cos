@@ -1,5 +1,6 @@
 package org.elasticsearch.repositories.cos;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.NoSuchFileException;
@@ -9,23 +10,30 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.qcloud.cos.exception.MultiObjectDeleteException;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.util.SetOnce;
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.blobstore.*;
 import org.elasticsearch.common.blobstore.support.AbstractBlobContainer;
-import org.elasticsearch.common.blobstore.support.PlainBlobMetaData;
+import org.elasticsearch.common.blobstore.support.PlainBlobMetadata;
 import org.elasticsearch.common.collect.Tuple;
 
 import com.qcloud.cos.exception.CosClientException;
 import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.model.*;
+import org.elasticsearch.common.unit.ByteSizeUnit;
+import org.elasticsearch.common.unit.ByteSizeValue;
 
 /**
  * A plugin to add a repository type 'cos' -- The Object Storage service in QCloud.
  */
 public class COSBlobContainer extends AbstractBlobContainer {
+    
+    private static final Logger logger = LogManager.getLogger(COSBlobContainer.class);
 
     private static final int MAX_BULK_DELETES = 1000;
     protected final COSBlobStore blobStore;
@@ -38,11 +46,22 @@ public class COSBlobContainer extends AbstractBlobContainer {
     }
 
     @Override
+    public boolean blobExists(String blobName) {
+        try {
+            SocketAccess.doPrivileged(() ->
+                    blobStore.client().doesObjectExist(blobStore.bucket(), buildKey(blobName)));
+            return true;
+        } catch (CosClientException e) {
+            return false;
+        } catch (Exception e) {
+            throw new BlobStoreException("failed to check if blob exists", e);
+        }
+    }
+
+    @Override
     public InputStream readBlob(String blobName) throws IOException {
         try {
-            COSObject object = SocketAccess.doPrivileged(() ->
-                    blobStore.client().getObject(blobStore.bucket(), buildKey(blobName)));
-            return object.getObjectContent();
+            return new CosRetryingInputStream(blobStore, buildKey(blobName));
         } catch (CosClientException e) {
             if (e instanceof CosServiceException) {
                 if (404 == ((CosServiceException) e).getStatusCode()) {
@@ -52,7 +71,28 @@ public class COSBlobContainer extends AbstractBlobContainer {
             throw e;
         }
     }
-
+    
+    @Override
+    public InputStream readBlob(String blobName, long position, long length) throws IOException {
+        if (position < 0L) {
+            throw new IllegalArgumentException("position must be non-negative");
+        }
+        if (length < 0) {
+            throw new IllegalArgumentException("length must be non-negative");
+        }
+        if (length == 0) {
+            return new ByteArrayInputStream(new byte[0]);
+        } else {
+            return new CosRetryingInputStream(blobStore, buildKey(blobName), position, Math.addExact(position, length - 1));
+        }
+    }
+    
+    @Override
+    public long readBlobPreferredLength() {
+        // This container returns streams that must be fully consumed, so we tell consumers to make bounded requests.
+        return new ByteSizeValue(32, ByteSizeUnit.MB).getBytes();
+    }
+    
     /**
      * 可以忽略failIfAlreadyExists，因为cos会自动覆盖重名的object
      */
@@ -236,6 +276,10 @@ public class COSBlobContainer extends AbstractBlobContainer {
                         outstanding.addAll(
                                 e.getErrors().stream().map(MultiObjectDeleteException.DeleteError::getKey).collect(Collectors.toList())
                         );
+                        logger.warn(
+                                () -> new ParameterizedMessage("Failed to delete some blobs {}", e.getErrors()
+                                        .stream().map(err -> "[" + err.getKey() + "][" + err.getCode() + "][" + err.getMessage() + "]")
+                                        .collect(Collectors.toList())), e);
                         aex = ExceptionsHelper.useOrSuppress(aex, e);
                     } catch (CosClientException e) {
                         aex = ExceptionsHelper.useOrSuppress(aex, e);
@@ -255,15 +299,14 @@ public class COSBlobContainer extends AbstractBlobContainer {
         return new DeleteObjectsRequest(bucket).withKeys(blobs.toArray(Strings.EMPTY_ARRAY)).withQuiet(true);
     }
 
-
     @Override
-    public Map<String, BlobMetaData> listBlobsByPrefix(@Nullable String blobNamePrefix) throws IOException {
+    public Map<String, BlobMetadata> listBlobsByPrefix(@Nullable String blobNamePrefix) throws IOException {
         try {
             return executeListing(generateListObjectsRequest(blobNamePrefix == null ? keyPath : buildKey(blobNamePrefix)))
                         .stream()
                         .flatMap(listing -> listing.getObjectSummaries().stream())
-                        .map(summary -> new PlainBlobMetaData(summary.getKey().substring(keyPath.length()), summary.getSize()))
-                        .collect(Collectors.toMap(PlainBlobMetaData::name, Function.identity()));
+                        .map(summary -> new PlainBlobMetadata(summary.getKey().substring(keyPath.length()), summary.getSize()))
+                        .collect(Collectors.toMap(PlainBlobMetadata::name, Function.identity()));
         } catch (CosClientException e) {
             throw new IOException("Exception when listing blobs by prefix [" + blobNamePrefix + "]", e);
         }
@@ -271,7 +314,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
     }
 
     @Override
-    public Map<String, BlobMetaData> listBlobs() throws IOException {
+    public Map<String, BlobMetadata> listBlobs() throws IOException {
         return listBlobsByPrefix(null);
     }
 

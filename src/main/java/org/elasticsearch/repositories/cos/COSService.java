@@ -5,7 +5,9 @@ import com.qcloud.cos.ClientConfig;
 import com.qcloud.cos.auth.BasicCOSCredentials;
 import com.qcloud.cos.auth.COSCredentials;
 import com.qcloud.cos.region.Region;
-import org.elasticsearch.cluster.metadata.RepositoryMetaData;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.elasticsearch.cluster.metadata.RepositoryMetadata;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
@@ -16,15 +18,17 @@ import java.io.IOException;
 
 //TODO: 考虑是否需要继承closeable，处理连接池等问题
 public class COSService implements Closeable {
+    private static final Logger logger = LogManager.getLogger(COSService.class);
 
     private COSClient client;
     public static final ByteSizeValue MAX_SINGLE_FILE_SIZE = new ByteSizeValue(5, ByteSizeUnit.GB);
 
-    COSService(RepositoryMetaData metaData) {
+    COSService(RepositoryMetadata metaData) {
         this.client = createClient(metaData);
     }
 
-    private synchronized COSClient createClient(RepositoryMetaData metaData) {
+    private synchronized COSClient createClient(RepositoryMetadata metaData) {
+        logger.error("here");
         String access_key_id = COSClientSettings.ACCESS_KEY_ID.get(metaData.settings());
         String access_key_secret = COSClientSettings.ACCESS_KEY_SECRET.get(metaData.settings());
         String region = COSClientSettings.REGION.get(metaData.settings());

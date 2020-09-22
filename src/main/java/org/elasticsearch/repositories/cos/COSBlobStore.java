@@ -9,7 +9,6 @@ public class COSBlobStore implements BlobStore {
     private final COSClient client;
     private final String bucket;
 
-
     COSBlobStore(COSClient client, String bucket) {
         this.client = client;
         this.bucket = bucket;
