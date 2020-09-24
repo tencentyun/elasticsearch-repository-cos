@@ -28,7 +28,6 @@ public class COSService implements Closeable {
     }
 
     private synchronized COSClient createClient(RepositoryMetadata metaData) {
-        logger.error("here");
         String access_key_id = COSClientSettings.ACCESS_KEY_ID.get(metaData.settings());
         String access_key_secret = COSClientSettings.ACCESS_KEY_SECRET.get(metaData.settings());
         String region = COSClientSettings.REGION.get(metaData.settings());
