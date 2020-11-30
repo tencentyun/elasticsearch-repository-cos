@@ -7,7 +7,6 @@ import java.util.Map;
 
 import com.qcloud.cos.COSClient;
 import org.elasticsearch.cluster.metadata.RepositoryMetaData;
-import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.plugins.RepositoryPlugin;
@@ -25,11 +24,9 @@ public class COSRepositoryPlugin extends Plugin implements RepositoryPlugin {
     }
 
     @Override
-    public Map<String, Repository.Factory> getRepositories(Environment env,
-                                                                     NamedXContentRegistry namedXContentRegistry) {
+    public Map<String, Repository.Factory> getRepositories(Environment env) {
         return Collections.singletonMap(COSRepository.TYPE,
-                (metadata) -> new COSRepository(metadata, env.settings(), namedXContentRegistry,
-                        createStorageService(env.settings(), metadata)));
+                (metadata) -> new COSRepository(metadata, env.settings(), createStorageService(env.settings(), metadata)));
     }
 
     @Override
