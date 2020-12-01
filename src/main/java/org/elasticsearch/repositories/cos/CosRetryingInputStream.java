@@ -3,7 +3,9 @@ package org.elasticsearch.repositories.cos;
 import com.qcloud.cos.exception.CosClientException;
 import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.model.COSObject;
+import com.qcloud.cos.model.COSObjectInputStream;
 import com.qcloud.cos.model.GetObjectRequest;
+import com.qcloud.cos.model.ObjectMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
@@ -27,12 +29,14 @@ public class CosRetryingInputStream extends InputStream {
     private final long start;
     private final long end;
     private final int maxAttempts;
+    private final List<IOException> failures;
     
-    private InputStream currentStream;
+    private COSObjectInputStream currentStream;
+    private long currentStreamLastOffset;
     private int attempt = 1;
-    private List<IOException> failures = new ArrayList<>(MAX_SUPPRESSED_EXCEPTIONS);
     private long currentOffset;
     private boolean closed;
+    private boolean eof;
     
     CosRetryingInputStream(COSBlobStore blobStore, String blobKey) throws IOException {
         this(blobStore, blobKey, 0, Long.MAX_VALUE - 1);
@@ -49,12 +53,13 @@ public class CosRetryingInputStream extends InputStream {
         this.blobStore = blobStore;
         this.blobKey = blobKey;
         this.maxAttempts = 11;
+        this.failures = new ArrayList<>(MAX_SUPPRESSED_EXCEPTIONS);
         this.start = start;
         this.end = end;
-        currentStream = openStream();
+        openStream();
     }
     
-    private InputStream openStream() throws IOException {
+    private void openStream() throws IOException {
         try {
             final GetObjectRequest getObjectRequest = new GetObjectRequest(blobStore.bucket(), blobKey);
             if (currentOffset > 0 || start > 0 || end < Long.MAX_VALUE - 1) {
@@ -63,7 +68,8 @@ public class CosRetryingInputStream extends InputStream {
                 getObjectRequest.setRange(Math.addExact(start, currentOffset), end);
             }
             final COSObject s3Object = SocketAccess.doPrivileged(() -> blobStore.client().getObject(getObjectRequest));
-            return s3Object.getObjectContent();
+            this.currentStreamLastOffset = Math.addExact(Math.addExact(start, currentOffset), getStreamLength(s3Object));
+            this.currentStream = s3Object.getObjectContent();
         } catch (final CosClientException e) {
             if (e instanceof CosServiceException) {
                 if (404 == ((CosServiceException) e).getStatusCode()) {
@@ -74,12 +80,27 @@ public class CosRetryingInputStream extends InputStream {
         }
     }
     
+    private long getStreamLength(final COSObject object) {
+        final ObjectMetadata metadata = object.getObjectMetadata();
+        try {
+            // Returns the content range of the object if response contains the Content-Range header.
+            return metadata.getContentLength();
+        } catch (Exception e) {
+            assert false : e;
+            return Long.MAX_VALUE - 1L; // assume a large stream so that the underlying stream is aborted on closing, unless eof is reached
+        }
+    }
+    
     @Override
     public int read() throws IOException {
         ensureOpen();
         while (true) {
             try {
                 final int result = currentStream.read();
+                if (result == -1) {
+                    eof = true;
+                    return -1;
+                }
                 currentOffset += 1;
                 return result;
             } catch (IOException e) {
@@ -95,6 +116,7 @@ public class CosRetryingInputStream extends InputStream {
             try {
                 final int bytesRead = currentStream.read(b, off, len);
                 if (bytesRead == -1) {
+                    eof = true;
                     return -1;
                 }
                 currentOffset += bytesRead;
@@ -124,24 +146,32 @@ public class CosRetryingInputStream extends InputStream {
         if (failures.size() < MAX_SUPPRESSED_EXCEPTIONS) {
             failures.add(e);
         }
-        try {
-            Streams.consumeFully(currentStream);
-        } catch (Exception e2) {
-            logger.trace("Failed to fully consume stream on close", e);
-        }
+        maybeAbort(currentStream);
         IOUtils.closeWhileHandlingException(currentStream);
-        currentStream = openStream();
+        openStream();
     }
     
     @Override
     public void close() throws IOException {
+        maybeAbort(currentStream);
         try {
-            Streams.consumeFully(currentStream);
-        } catch (Exception e) {
-            logger.trace("Failed to fully consume stream on close", e);
+            currentStream.close();
+        } finally {
+            closed = true;
         }
-        currentStream.close();
-        closed = true;
+    }
+    
+    private void maybeAbort(COSObjectInputStream stream) {
+        if (isEof()) {
+            return;
+        }
+        try {
+            if (start + currentOffset < currentStreamLastOffset) {
+                stream.abort();
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to abort stream before closing", e);
+        }
     }
     
     @Override
@@ -154,4 +184,16 @@ public class CosRetryingInputStream extends InputStream {
         throw new UnsupportedOperationException("S3RetryingInputStream does not support seeking");
     }
     
+    // package-private for tests
+    boolean isEof() {
+        return eof || start + currentOffset == currentStreamLastOffset;
+    }
+    
+    // package-private for tests
+    boolean isAborted() {
+        if (currentStream == null || currentStream.getHttpRequest() == null) {
+            return false;
+        }
+        return currentStream.getHttpRequest().isAborted();
+    }
 }

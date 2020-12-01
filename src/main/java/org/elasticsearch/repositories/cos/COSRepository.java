@@ -21,6 +21,7 @@ import org.elasticsearch.repositories.RepositoryData;
 import org.elasticsearch.repositories.RepositoryException;
 import org.elasticsearch.repositories.ShardGenerations;
 import org.elasticsearch.repositories.blobstore.BlobStoreRepository;
+import org.elasticsearch.repositories.blobstore.MeteredBlobStoreRepository;
 import org.elasticsearch.snapshots.SnapshotId;
 import org.elasticsearch.snapshots.SnapshotInfo;
 import org.elasticsearch.snapshots.SnapshotsService;
@@ -28,13 +29,14 @@ import org.elasticsearch.threadpool.Scheduler;
 import org.elasticsearch.threadpool.ThreadPool;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
-public class COSRepository extends BlobStoreRepository {
+public class COSRepository extends MeteredBlobStoreRepository {
     private static final Logger logger = LogManager.getLogger(COSRepository.class);
-    private static final DeprecationLogger deprecationLogger = new DeprecationLogger(logger);
+    private static final DeprecationLogger deprecationLogger = DeprecationLogger.getLogger(logger.getName());
     public static final String TYPE = "cos";
 
     private final BlobPath basePath;
@@ -48,6 +50,12 @@ public class COSRepository extends BlobStoreRepository {
      * files that are already compressed by default. Defaults to false.
      */
     static final Setting<Boolean> COMPRESS_SETTING = Setting.boolSetting("compress", false);
+    
+    /**
+     * Specifies the path within bucket to repository data. Defaults to root directory.
+     */
+    static final Setting<String> BASE_PATH_SETTING = Setting.simpleString("base_path");
+    static final Setting<String> BUCKET_SETTING = Setting.simpleString("bucket");
     
     /**
      * Artificial delay to introduce after a snapshot finalization or delete has finished so long as the repository is still using the
@@ -76,7 +84,12 @@ public class COSRepository extends BlobStoreRepository {
                   COSService cos,
                   final ClusterService clusterService,
                   final RecoverySettings recoverySettings) {
-        super(metadata, COMPRESS_SETTING.get(metadata.settings()), namedXContentRegistry, clusterService, recoverySettings);
+        super(metadata, 
+                COMPRESS_SETTING.get(metadata.settings()), 
+                namedXContentRegistry, 
+                clusterService, 
+                recoverySettings,
+                buildLocation(metadata));
         this.service = cos;
         String bucket = COSClientSettings.BUCKET.get(metadata.settings());
         if (bucket == null || !Strings.hasLength(bucket)) {
@@ -87,14 +100,14 @@ public class COSRepository extends BlobStoreRepository {
         // qcloud-sdk-v5 app_id directly joined with bucket name
         if (Strings.hasLength(app_id)) {
             this.bucket = bucket + "-" + app_id;
-            deprecationLogger.deprecatedAndMaybeLog("cos_repository_secret_settings","cos repository bucket already contain app_id, and app_id will not be supported for the cos repository in future releases");
+            deprecationLogger.deprecate("cos_repository_secret_settings","cos repository bucket already contain app_id, and app_id will not be supported for the cos repository in future releases");
         } else {
             this.bucket = bucket;
         }
 
         if (basePath.startsWith("/")) {
             basePath = basePath.substring(1);
-            deprecationLogger.deprecatedAndMaybeLog("cos_repository_secret_settings","cos repository base_path trimming the leading `/`, and leading `/` will not be supported for the cos repository in future releases");
+            deprecationLogger.deprecate("cos_repository_secret_settings","cos repository base_path trimming the leading `/`, and leading `/` will not be supported for the cos repository in future releases");
         }
 
         if (Strings.hasLength(basePath)) {
@@ -108,6 +121,11 @@ public class COSRepository extends BlobStoreRepository {
 
         logger.trace("using bucket [{}], base_path [{}], chunk_size [{}], compress [{}]", bucket,
                 basePath, chunkSize, compress);
+    }
+    
+    private static Map<String, String> buildLocation(RepositoryMetadata metadata) {
+        return org.elasticsearch.common.collect.Map.of("base_path", BASE_PATH_SETTING.get(metadata.settings()),
+                "bucket", BUCKET_SETTING.get(metadata.settings()));
     }
     
     /**

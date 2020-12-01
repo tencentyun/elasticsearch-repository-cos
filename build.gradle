@@ -127,9 +127,9 @@ processTestResources {
     MavenFilteringHack.filter(it, expansions)
 }
 
-integTest {
-    dependsOn processTestResources
-}
+//integTest {
+//    dependsOn processTestResources
+//}
 
 // elasticsearch.esplugin task configure
 checkstyleMain.enabled = false
