@@ -179,8 +179,9 @@ public class COSBlobContainer extends AbstractBlobContainer {
     public void move(String sourceBlobName, String targetBlobName) throws IOException {
         try {
             this.blobStore.client().copyObject(blobStore.bucket(), buildKey(sourceBlobName), blobStore.bucket(), buildKey(targetBlobName));
+            Thread.sleep(1000);
             this.blobStore.client().deleteObject(blobStore.bucket(), buildKey(sourceBlobName));
-        } catch(CosClientException e) {
+        } catch(CosClientException | InterruptedException e) {
             throw new IOException("Exception when copy blob from " + sourceBlobName + " to " + targetBlobName, e);
         }
     }
