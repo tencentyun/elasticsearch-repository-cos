@@ -27,9 +27,8 @@ public class COSRepository extends BlobStoreRepository {
     private final ByteSizeValue chunkSize;
 
     COSRepository(RepositoryMetaData metadata, Settings settings,
-                  NamedXContentRegistry namedXContentRegistry, COSService cos,
-                  ThreadPool threadpool) {
-        super(metadata, settings, COSClientSettings.COMPRESS.get(metadata.settings()), namedXContentRegistry, threadpool);
+                  NamedXContentRegistry namedXContentRegistry, COSService cos) {
+        super(metadata, settings, COSClientSettings.COMPRESS.get(metadata.settings()), namedXContentRegistry);
         String bucket = COSClientSettings.BUCKET.get(metadata.settings());
         if (bucket == null || !Strings.hasLength(bucket)) {
             throw new RepositoryException(metadata.name(), "No bucket defined for cos repository");
