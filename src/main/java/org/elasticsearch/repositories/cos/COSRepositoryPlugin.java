@@ -24,11 +24,10 @@ public class COSRepositoryPlugin extends Plugin implements RepositoryPlugin {
 
     @Override
     public Map<String, Repository.Factory> getRepositories(final Environment env,
-                                                           final NamedXContentRegistry namedXContentRegistry,
-                                                           final ThreadPool threadPool) {
+                                                           final NamedXContentRegistry namedXContentRegistry) {
         return Collections.singletonMap(COSRepository.TYPE,
                 (metadata) -> new COSRepository(metadata, env.settings(), namedXContentRegistry,
-                        createStorageService(metadata), threadPool));
+                        createStorageService(metadata)));
     }
 
     @Override
