@@ -7,6 +7,7 @@ import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.unit.ByteSizeValue;
+import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.repositories.RepositoryException;
 import org.elasticsearch.repositories.blobstore.BlobStoreRepository;
 
@@ -20,8 +21,9 @@ public class COSRepository extends BlobStoreRepository {
     private final boolean compress;
     private final ByteSizeValue chunkSize;
 
-    COSRepository(RepositoryMetaData metadata, Settings settings, COSService cos) throws IOException {
-        super(metadata, settings);
+    COSRepository(RepositoryMetaData metadata, Settings settings,
+                 NamedXContentRegistry namedXContentRegistry, COSService cos) throws IOException {
+        super(metadata, settings, namedXContentRegistry);
         String bucket = getSetting(COSClientSettings.BUCKET, metadata);
         String basePath = getSetting(COSClientSettings.BASE_PATH, metadata);
         String app_id = COSRepository.getSetting(COSClientSettings.APP_ID, metadata);
