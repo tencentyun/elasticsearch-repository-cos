@@ -23,7 +23,7 @@ import com.qcloud.cos.exception.CosClientException;
 import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.model.*;
 
-/**
+/** 
  * A plugin to add a repository type 'cos' -- The Object Storage service in QCloud.
  */
 public class COSBlobContainer extends AbstractBlobContainer {
