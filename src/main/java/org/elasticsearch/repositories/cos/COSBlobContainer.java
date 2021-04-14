@@ -7,13 +7,13 @@ import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.apache.lucene.util.SetOnce;
 import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.Strings;
-import org.elasticsearch.common.blobstore.BlobMetaData;
-import org.elasticsearch.common.blobstore.BlobPath;
-import org.elasticsearch.common.blobstore.BlobStoreException;
+import org.elasticsearch.common.blobstore.*;
 import org.elasticsearch.common.blobstore.support.AbstractBlobContainer;
 import org.elasticsearch.common.blobstore.support.PlainBlobMetaData;
 import org.elasticsearch.common.collect.MapBuilder;
@@ -231,6 +231,54 @@ public class COSBlobContainer extends AbstractBlobContainer {
     @Override
     public Map<String, BlobMetaData> listBlobs() throws IOException {
         return listBlobsByPrefix(null);
+    }
+
+    @Override
+    public Map<String, BlobContainer> children() throws IOException {
+        try {
+            Map<String, BlobContainer> a = executeListing(generateListObjectsRequest(keyPath)).stream()
+                    .flatMap(listing -> listing.getCommonPrefixes().stream())
+                    .map(prefix -> prefix.substring(keyPath.length()))
+                    .filter(name -> name.isEmpty() == false)
+                    .map(name -> name.substring(0, name.length() - 1))
+                    .collect(Collectors.toMap(Function.identity(), name -> blobStore.blobContainer(path().add(name))));
+
+            return executeListing(generateListObjectsRequest(keyPath)).stream()
+                    .flatMap(listing -> listing.getCommonPrefixes().stream())
+                    .map(prefix -> prefix.substring(keyPath.length()))
+                    .filter(name -> name.isEmpty() == false)
+                    .map(name -> name.substring(0, name.length() - 1))
+                    .collect(Collectors.toMap(Function.identity(), name -> blobStore.blobContainer(path().add(name))));
+        } catch (CosClientException e) {
+            throw new IOException("Exception when listing children of [" + path().buildAsString() + ']', e);
+        }
+    }
+
+    private List<ObjectListing> executeListing(ListObjectsRequest listObjectsRequest) {
+        final List<ObjectListing> results = new ArrayList<>();
+        ObjectListing prevListing = null;
+        while (true) {
+            ObjectListing list;
+            if (prevListing != null) {
+                final ObjectListing finalPrevListing = prevListing;
+                list = SocketAccess.doPrivileged(() -> blobStore.client().listNextBatchOfObjects(finalPrevListing));
+            } else {
+                list = SocketAccess.doPrivileged(() -> blobStore.client().listObjects(listObjectsRequest));
+            }
+            results.add(list);
+            if (list.isTruncated()) {
+                prevListing = list;
+            } else {
+                break;
+            }
+        }
+        return results;
+    }
+
+    private ListObjectsRequest generateListObjectsRequest(String keyPath) {
+        ListObjectsRequest listObjectsRequest = new ListObjectsRequest();
+        listObjectsRequest.withBucketName(blobStore.bucket()).withPrefix(keyPath).withDelimiter("/");
+        return listObjectsRequest;
     }
 
     protected String buildKey(String blobName) {

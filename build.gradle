@@ -39,6 +39,12 @@ license {
     }
 }
 
+configurations.all {
+    resolutionStrategy.dependencySubstitution {
+        substitute project(':rest-api-spec') with module ("org.elasticsearch:rest-api-spec:${esVersion}")
+    }
+}
+
 // copyright notices
 noticeFile = rootProject.file('NOTICE.txt')
 
@@ -62,6 +68,7 @@ dependencies {
     compile "commons-logging:commons-logging:1.1.3"
     compile "org.slf4j:slf4j-log4j12:1.7.21"
     compile "org.slf4j:slf4j-api:1.7.21"
+    compile "log4j:log4j:1.2.17"
     compile "com.fasterxml.jackson.core:jackson-core:2.8.11"
     compile "com.fasterxml.jackson.core:jackson-annotations:2.9.4"
     compile "com.fasterxml.jackson.core:jackson-databind:2.9.4"
@@ -100,6 +107,7 @@ integTest {
 }
 
 // elasticsearch.esplugin task configure
+test.enabled = false
 checkstyleMain.enabled = false
 checkstyleTest.enabled = false
 dependencyLicenses.enabled = false
