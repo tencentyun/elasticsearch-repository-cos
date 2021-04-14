@@ -7,7 +7,7 @@
     <includeBaseDirectory>false</includeBaseDirectory>
     <dependencySets>
         <dependencySet>
-            <outputDirectory/>
+            <outputDirectory>/elasticsearch</outputDirectory>
             <useProjectArtifact>true</useProjectArtifact>
             <useTransitiveFiltering>true</useTransitiveFiltering>
             <excludes>
@@ -18,7 +18,7 @@
     <fileSets>
         <fileSet>
             <directory>src/main/resources</directory>
-            <outputDirectory/>
+            <outputDirectory>/elasticsearch</outputDirectory>
             <includes>
                 <include>plugin-descriptor.properties</include>
                 <include>plugin-security.policy</include>
@@ -26,7 +26,7 @@
         </fileSet>
         <fileSet>
             <directory>lib</directory>
-            <outputDirectory/>
+            <outputDirectory>/elasticsearch</outputDirectory>
             <includes>
                 <include>*.jar</include>
             </includes>
