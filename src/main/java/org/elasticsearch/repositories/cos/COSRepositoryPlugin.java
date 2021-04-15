@@ -4,7 +4,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Arrays;
 import java.util.Map;
-import org.elasticsearch.cluster.metadata.RepositoryMetaData;
+import org.elasticsearch.cluster.metadata.RepositoryMetadata;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.env.Environment;
@@ -19,7 +19,7 @@ import org.elasticsearch.threadpool.ThreadPool;
  */
 public class COSRepositoryPlugin extends Plugin implements RepositoryPlugin {
 
-    protected COSService createStorageService(RepositoryMetaData metaData) {
+    protected COSService createStorageService(RepositoryMetadata metaData) {
         return new COSService(metaData);
     }
 
