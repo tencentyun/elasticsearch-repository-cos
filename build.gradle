@@ -29,6 +29,16 @@ apply plugin: 'elasticsearch.esplugin'
 apply plugin: 'maven'
 apply plugin: 'license'
 
+compileJava.options.encoding = 'UTF-8'
+compileTestJava.options.encoding = 'UTF-8'
+javadoc.options.encoding = 'UTF-8'
+
+configurations.whenObjectAdded { c ->
+    if (c.name == 'elasticsearch_7.5.0_integ_test_zip_null') {
+        project.dependencies.add('elasticsearch_7.5.0_integ_test_zip_null', 'org.elasticsearch.distribution.integ-test-zip:elasticsearch:7.5.0@zip')
+    }
+}
+
 ext.projectSubstitutions = [:]
 // license of this project
 licenseFile = rootProject.file('LICENSE.txt')
