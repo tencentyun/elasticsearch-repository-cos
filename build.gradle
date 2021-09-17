@@ -132,15 +132,15 @@ processTestResources {
 //}
 
 // elasticsearch.esplugin task configure
-checkstyleMain.enabled = false
-checkstyleTest.enabled = false
-dependencyLicenses.enabled = false
-licenseMain.enabled = false
-thirdPartyAudit.enabled = false
-licenseHeaders.enabled = false
-forbiddenApisMain.enabled = false
-forbiddenApisTest.enabled = false
-licenseTest.enabled = false
+//checkstyleMain.enabled = false
+//checkstyleTest.enabled = false
+//dependencyLicenses.enabled = false
+//licenseMain.enabled = false
+//thirdPartyAudit.enabled = false
+//licenseHeaders.enabled = false
+//forbiddenApisMain.enabled = false
+//forbiddenApisTest.enabled = false
+//licenseTest.enabled = false
 
 
 TestClustersRegistry registry = project.rootProject.extensions.create("testClustersRegistry", TestClustersRegistry)

@@ -6,6 +6,7 @@ import java.util.Arrays;
 import java.util.Map;
 import org.elasticsearch.cluster.metadata.RepositoryMetadata;
 import org.elasticsearch.cluster.service.ClusterService;
+import org.elasticsearch.common.util.BigArrays;
 import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.indices.recovery.RecoverySettings;
@@ -28,10 +29,11 @@ public class COSRepositoryPlugin extends Plugin implements RepositoryPlugin {
     public Map<String, Repository.Factory> getRepositories(final Environment env,
                                                            final NamedXContentRegistry namedXContentRegistry,
                                                            final ClusterService clusterService,
+                                                           final BigArrays bigArrays,
                                                            final RecoverySettings recoverySettings) {
         return Collections.singletonMap(COSRepository.TYPE,
                 (metadata) -> new COSRepository(metadata, namedXContentRegistry,
-                        createStorageService(metadata), clusterService, recoverySettings));
+                        createStorageService(metadata), clusterService, bigArrays, recoverySettings));
     }
 
     @Override

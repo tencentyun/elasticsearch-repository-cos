@@ -15,6 +15,7 @@ import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.common.util.BigArrays;
 import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.indices.recovery.RecoverySettings;
 import org.elasticsearch.repositories.RepositoryData;
@@ -83,11 +84,13 @@ public class COSRepository extends MeteredBlobStoreRepository {
                   NamedXContentRegistry namedXContentRegistry,
                   COSService cos,
                   final ClusterService clusterService,
+                  final BigArrays bigArrays,
                   final RecoverySettings recoverySettings) {
         super(metadata, 
                 COMPRESS_SETTING.get(metadata.settings()), 
                 namedXContentRegistry, 
-                clusterService, 
+                clusterService,
+                bigArrays,
                 recoverySettings,
                 buildLocation(metadata));
         this.service = cos;
