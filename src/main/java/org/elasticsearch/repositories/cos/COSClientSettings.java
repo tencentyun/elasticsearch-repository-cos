@@ -7,6 +7,17 @@ import org.elasticsearch.common.unit.ByteSizeValue;
 import static org.elasticsearch.common.settings.Setting.*;
 
 public class COSClientSettings {
+    
+    static {
+        // Make sure repository plugin class is loaded before this class is used to trigger static initializer for that class which applies
+        // necessary Jackson workaround
+        try {
+            Class.forName("org.elasticsearch.repositories.cos.COSRepositoryPlugin");
+        } catch (ClassNotFoundException e) {
+            throw new AssertionError(e);
+        }
+    }
+    
     private static final ByteSizeValue MIN_CHUNK_SIZE = new ByteSizeValue(1, ByteSizeUnit.MB);
     private static final ByteSizeValue MAX_CHUNK_SIZE = new ByteSizeValue(1, ByteSizeUnit.GB);
 
