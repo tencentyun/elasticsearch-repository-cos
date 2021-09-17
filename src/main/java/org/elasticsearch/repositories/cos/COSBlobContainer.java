@@ -27,6 +27,7 @@ import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.model.*;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
+import org.elasticsearch.common.util.CollectionUtils;
 
 /**
  * A plugin to add a repository type 'cos' -- The Object Storage service in QCloud.
@@ -224,9 +225,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
                     doDeleteBlobs(blobsToDelete, false);
                     prevListing = list;
                 } else {
-                    final List<String> lastBlobToDelete = new ArrayList<>(blobsToDelete);
-                    lastBlobToDelete.add(keyPath);
-                    doDeleteBlobs(lastBlobToDelete, false);
+                    doDeleteBlobs(CollectionUtils.appendToCopy(blobsToDelete, keyPath), false);
                     break;
                 }
             }
