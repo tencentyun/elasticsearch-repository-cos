@@ -37,7 +37,8 @@ public class COSService implements Closeable {
         String endPoint = COSClientSettings.END_POINT.get(metaData.settings());
 
         COSCredentials cred = new BasicCOSCredentials(access_key_id, access_key_secret);
-        ClientConfig clientConfig = new ClientConfig(new Region(region));
+        
+        ClientConfig clientConfig = SocketAccess.doPrivileged(() -> new ClientConfig(new Region(region)));
         if (Strings.hasLength(endPoint)) {
             clientConfig.setEndPointSuffix(endPoint);
         }
