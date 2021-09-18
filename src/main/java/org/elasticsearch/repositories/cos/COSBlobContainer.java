@@ -117,6 +117,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
                           boolean failIfAlreadyExists,
                           boolean atomic,
                           CheckedConsumer<OutputStream, IOException> writer) throws IOException {
+        final String absoluteBlobKey = buildKey(blobName);
         try (
                 ChunkedBlobOutputStream<PartETag> out = new ChunkedBlobOutputStream<PartETag>(
                         blobStore.bigArrays(), blobStore.bufferSizeInBytes()) {
@@ -135,14 +136,14 @@ public class COSBlobContainer extends AbstractBlobContainer {
                         if (flushedBytes == 0L) {
                             assert lastPart == false : "use single part upload if there's only a single part";
                             uploadId.set(SocketAccess.doPrivileged(() ->
-                                    blobStore.client().initiateMultipartUpload(initiateMultiPartUpload(blobName)).getUploadId()));
+                                    blobStore.client().initiateMultipartUpload(initiateMultiPartUpload(absoluteBlobKey)).getUploadId()));
                             if (Strings.isEmpty(uploadId.get())) {
-                                throw new IOException("Failed to initialize multipart upload " + blobName);
+                                throw new IOException("Failed to initialize multipart upload " + absoluteBlobKey);
                             }
                         }
                         assert lastPart == false || successful : "must only write last part if successful";
                         final UploadPartRequest uploadRequest = createPartUploadRequest(
-                                buffer.bytes().streamInput(), uploadId.get(), parts.size() + 1, blobName, buffer.size(), lastPart);
+                                buffer.bytes().streamInput(), uploadId.get(), parts.size() + 1, absoluteBlobKey, buffer.size(), lastPart);
                         final UploadPartResult uploadResponse =
                                 SocketAccess.doPrivileged(() -> blobStore.client().uploadPart(uploadRequest));
                         finishPart(uploadResponse.getPartETag());
@@ -155,7 +156,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
                         } else {
                             flushBuffer(true);
                             final CompleteMultipartUploadRequest complRequest =
-                                    new CompleteMultipartUploadRequest(blobStore.bucket(), blobName, uploadId.get(), parts);
+                                    new CompleteMultipartUploadRequest(blobStore.bucket(), absoluteBlobKey, uploadId.get(), parts);
                             SocketAccess.doPrivilegedVoid(() -> blobStore.client().completeMultipartUpload(complRequest));
                         }
                     }
@@ -163,7 +164,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
                     @Override
                     protected void onFailure() {
                         if (Strings.hasText(uploadId.get())) {
-                            abortMultiPartUpload(uploadId.get(), blobName);
+                            abortMultiPartUpload(uploadId.get(), absoluteBlobKey);
                         }
                     }
                 }) {
