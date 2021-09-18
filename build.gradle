@@ -1,6 +1,6 @@
-import org.elasticsearch.gradle.MavenFilteringHack
-import org.elasticsearch.gradle.testclusters.TestClustersRegistry
-import org.elasticsearch.gradle.testclusters.TestClustersPlugin
+//import org.elasticsearch.gradle.MavenFilteringHack
+//import org.elasticsearch.gradle.testclusters.TestClustersRegistry
+//import org.elasticsearch.gradle.testclusters.TestClustersPlugin
 
 
 buildscript {
@@ -29,13 +29,15 @@ apply plugin: 'elasticsearch.esplugin'
 //apply plugin: 'maven'
 apply plugin: 'license'
 
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
 compileJava.options.encoding = 'UTF-8'
 compileTestJava.options.encoding = 'UTF-8'
 javadoc.options.encoding = 'UTF-8'
 
 ext.projectSubstitutions = [:]
 // license of this project
-licenseFile = rootProject.file('LICENSE.txt')
+//licenseFile = rootProject.file('LICENSE.txt')
 
 license {
     header rootProject.file('LicenseHeader.txt')
@@ -47,7 +49,7 @@ license {
 }
 
 // copyright notices
-noticeFile = rootProject.file('NOTICE.txt')
+//noticeFile = rootProject.file('NOTICE.txt')
 
 esplugin {
     name pluginName
@@ -63,20 +65,20 @@ repositories {
 }
 
 dependencies {
-    api "org.elasticsearch:elasticsearch:" + esVersion
-    api "com.qcloud:cos_api:5.6.8"
-    api "commons-codec:commons-codec:1.11"
-    api "commons-logging:commons-logging:1.2"
-    api "com.fasterxml.jackson.core:jackson-core:2.10.4"
-    api "com.fasterxml.jackson.core:jackson-annotations:2.10.4"
-    api "com.fasterxml.jackson.core:jackson-databind:2.10.4"
-    api "org.apache.httpcomponents:httpclient:4.5.10"
-    api "org.apache.httpcomponents:httpcore:4.4.12"
-    api "org.apache.logging.log4j:log4j-api:2.11.1"
-    api "org.apache.logging.log4j:log4j-core:2.11.1"
-    api "org.slf4j:slf4j-api:1.7.21"
-    api "org.slf4j:slf4j-log4j12:1.7.21"
-    api "log4j:log4j:1.2.17"
+    compile "org.elasticsearch:elasticsearch:" + esVersion
+    compile "com.qcloud:cos_api:5.6.8"
+    compile "commons-codec:commons-codec:1.11"
+    compile "commons-logging:commons-logging:1.2"
+    compile "com.fasterxml.jackson.core:jackson-core:2.10.4"
+    compile "com.fasterxml.jackson.core:jackson-annotations:2.10.4"
+    compile "com.fasterxml.jackson.core:jackson-databind:2.10.4"
+    compile "org.apache.httpcomponents:httpclient:4.5.10"
+    compile "org.apache.httpcomponents:httpcore:4.4.12"
+    compile "org.apache.logging.log4j:log4j-api:2.11.1"
+    compile "org.apache.logging.log4j:log4j-core:2.11.1"
+    compile "org.slf4j:slf4j-api:1.7.21"
+    compile "org.slf4j:slf4j-log4j12:1.7.21"
+    compile "log4j:log4j:1.2.17"
 }
 
 configurations.all {
@@ -116,16 +118,16 @@ thirdPartyTest {
     dependsOn tasks.bundlePlugin
 }
 
-processTestResources {
-    Map<String, Object> expansions = [
-            'accessKeyId': cosAccessKeyId,
-            'accessKeySecret': cosAccessKeySecret,
-            'cosBucket': cosBucket,
-            'cosBasePath': cosBasePath,
-    ]
-    inputs.properties(expansions)
-    MavenFilteringHack.filter(it, expansions)
-}
+//processTestResources {
+//    Map<String, Object> expansions = [
+//            'accessKeyId': cosAccessKeyId,
+//            'accessKeySecret': cosAccessKeySecret,
+//            'cosBucket': cosBucket,
+//            'cosBasePath': cosBasePath,
+//    ]
+//    inputs.properties(expansions)
+////    MavenFilteringHack.filter(it, expansions)
+//}
 
 //integTest {
 //    dependsOn processTestResources
@@ -143,7 +145,7 @@ processTestResources {
 //licenseTest.enabled = false
 
 
-TestClustersRegistry registry = project.rootProject.extensions.create("testClustersRegistry", TestClustersRegistry)
+//TestClustersRegistry registry = project.rootProject.extensions.create("testClustersRegistry", TestClustersRegistry)
 //TestClustersPlugin.configureClaimClustersHook(project.gradle, registry)
 //TestClustersPlugin.configureStartClustersHook(project.gradle, registry)
 //TestClustersPlugin.configureStopClustersHook(project.gradle, registry)

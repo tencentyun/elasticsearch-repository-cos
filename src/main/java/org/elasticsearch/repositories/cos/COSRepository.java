@@ -14,11 +14,13 @@ import org.elasticsearch.common.logging.DeprecationCategory;
 import org.elasticsearch.common.logging.DeprecationLogger;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.Strings;
+import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
-import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.common.util.BigArrays;
 import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.indices.recovery.RecoverySettings;
+import org.elasticsearch.monitor.jvm.JvmInfo;
 import org.elasticsearch.repositories.RepositoryData;
 import org.elasticsearch.repositories.RepositoryException;
 import org.elasticsearch.repositories.ShardGenerations;
@@ -46,6 +48,7 @@ public class COSRepository extends MeteredBlobStoreRepository {
     private final ByteSizeValue chunkSize;
     private final COSService service;
     private final String bucket;
+    private final ByteSizeValue bufferSize;
 
     /**
      * When set to true metadata files are stored in compressed format. This setting doesn’t affect index
@@ -58,6 +61,48 @@ public class COSRepository extends MeteredBlobStoreRepository {
      */
     static final Setting<String> BASE_PATH_SETTING = Setting.simpleString("base_path");
     static final Setting<String> BUCKET_SETTING = Setting.simpleString("bucket");
+    
+    /**
+     * Maximum size of files that can be uploaded using a single upload request.
+     */
+    static final ByteSizeValue MAX_FILE_SIZE = new ByteSizeValue(5, ByteSizeUnit.GB);
+    
+    /**
+     * Minimum size of parts that can be uploaded using the Multipart Upload API.
+     */
+    static final ByteSizeValue MIN_PART_SIZE_USING_MULTIPART = new ByteSizeValue(5, ByteSizeUnit.MB);
+    
+    /**
+     * Maximum size of parts that can be uploaded using the Multipart Upload API.
+     * (see http://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html)
+     */
+    static final ByteSizeValue MAX_PART_SIZE_USING_MULTIPART = MAX_FILE_SIZE;
+    
+    /**
+     * Maximum size of files that can be uploaded using the Multipart Upload API.
+     */
+    static final ByteSizeValue MAX_FILE_SIZE_USING_MULTIPART = new ByteSizeValue(5, ByteSizeUnit.TB);
+    
+    /**
+     * Default is to use 100MB (S3 defaults) for heaps above 2GB and 5% of
+     * the available memory for smaller heaps.
+     */
+    private static final ByteSizeValue DEFAULT_BUFFER_SIZE = new ByteSizeValue(
+            Math.max(
+                    ByteSizeUnit.MB.toBytes(5), // minimum value
+                    Math.min(
+                            ByteSizeUnit.MB.toBytes(100),
+                            JvmInfo.jvmInfo().getMem().getHeapMax().getBytes() / 20)),
+            ByteSizeUnit.BYTES);
+    
+    /**
+     * Minimum threshold below which the chunk is uploaded using a single request. Beyond this threshold,
+     * the S3 repository will use the AWS Multipart Upload API to split the chunk into several parts, each of buffer_size length, and
+     * to upload each part in its own request. Note that setting a buffer size lower than 5mb is not allowed since it will prevents the
+     * use of the Multipart API and may result in upload errors. Defaults to the minimum between 100MB and 5% of the heap size.
+     */
+    static final Setting<ByteSizeValue> BUFFER_SIZE_SETTING =
+            Setting.byteSizeSetting("buffer_size", DEFAULT_BUFFER_SIZE, MIN_PART_SIZE_USING_MULTIPART, MAX_PART_SIZE_USING_MULTIPART);
     
     /**
      * Artificial delay to introduce after a snapshot finalization or delete has finished so long as the repository is still using the
@@ -117,12 +162,14 @@ public class COSRepository extends MeteredBlobStoreRepository {
         }
 
         if (Strings.hasLength(basePath)) {
-            this.basePath = new BlobPath().add(basePath);
+            this.basePath = BlobPath.EMPTY.add(basePath);
         } else {
-            this.basePath = BlobPath.cleanPath();
+            this.basePath = BlobPath.EMPTY;
         }
         this.compress = COSClientSettings.COMPRESS.get(metadata.settings());
         this.chunkSize = COSClientSettings.CHUNK_SIZE.get(metadata.settings());
+        this.bufferSize = BUFFER_SIZE_SETTING.get(metadata.settings());
+        
         coolDown = COOLDOWN_PERIOD.get(metadata.settings());
 
         logger.trace("using bucket [{}], base_path [{}], chunk_size [{}], compress [{}]", bucket,
@@ -130,7 +177,7 @@ public class COSRepository extends MeteredBlobStoreRepository {
     }
     
     private static Map<String, String> buildLocation(RepositoryMetadata metadata) {
-        return org.elasticsearch.common.collect.Map.of("base_path", BASE_PATH_SETTING.get(metadata.settings()),
+        return org.elasticsearch.core.Map.of("base_path", BASE_PATH_SETTING.get(metadata.settings()),
                 "bucket", BUCKET_SETTING.get(metadata.settings()));
     }
     
@@ -198,7 +245,7 @@ public class COSRepository extends MeteredBlobStoreRepository {
     
     @Override
     protected COSBlobStore createBlobStore() {
-        return new COSBlobStore(this.service.getClient(), this.bucket);
+        return new COSBlobStore(this.service.getClient(), this.bucket, this.bufferSize, this.bigArrays);
     }
 
     @Override

@@ -3,9 +3,11 @@ package org.elasticsearch.repositories.cos;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.NoSuchFileException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -15,20 +17,24 @@ import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.util.SetOnce;
 import org.elasticsearch.ExceptionsHelper;
-import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.blobstore.*;
 import org.elasticsearch.common.blobstore.support.AbstractBlobContainer;
 import org.elasticsearch.common.blobstore.support.PlainBlobMetadata;
 import org.elasticsearch.common.bytes.BytesReference;
-import org.elasticsearch.common.collect.Tuple;
+import org.elasticsearch.common.collect.Iterators;
 
 import com.qcloud.cos.exception.CosClientException;
 import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.model.*;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
-import org.elasticsearch.common.util.CollectionUtils;
+import org.elasticsearch.core.CheckedConsumer;
+import org.elasticsearch.core.Nullable;
+import org.elasticsearch.core.Tuple;
+import org.elasticsearch.repositories.blobstore.ChunkedBlobOutputStream;
+
+import static org.elasticsearch.repositories.cos.COSRepository.*;
 
 /**
  * A plugin to add a repository type 'cos' -- The Object Storage service in QCloud.
@@ -50,13 +56,9 @@ public class COSBlobContainer extends AbstractBlobContainer {
     @Override
     public boolean blobExists(String blobName) {
         try {
-            SocketAccess.doPrivileged(() ->
-                    blobStore.client().doesObjectExist(blobStore.bucket(), buildKey(blobName)));
-            return true;
-        } catch (CosClientException e) {
-            return false;
-        } catch (Exception e) {
-            throw new BlobStoreException("failed to check if blob exists", e);
+            return SocketAccess.doPrivileged(() -> blobStore.client().doesObjectExist(blobStore.bucket(), buildKey(blobName)));
+        } catch (final Exception e) {
+            throw new BlobStoreException("Failed to check if blob [" + blobName + "] exists", e);
         }
     }
 
@@ -100,112 +102,122 @@ public class COSBlobContainer extends AbstractBlobContainer {
      */
     @Override
     public void writeBlob(String blobName, InputStream inputStream, long blobSize, boolean failIfAlreadyExists) throws IOException {
-        if (blobSize <= COSService.MAX_SINGLE_FILE_SIZE.getBytes()) {
-            doSingleUpload(blobName, inputStream, blobSize);
-        } else {
-            doMultipartUpload(blobName, inputStream, blobSize);
+        SocketAccess.doPrivilegedIOException(() -> {
+            if (blobSize <= getLargeBlobThresholdInBytes()) {
+                executeSingleUpload(blobStore, buildKey(blobName), inputStream, blobSize);
+            } else {
+                executeMultipartUpload(blobStore, buildKey(blobName), inputStream, blobSize);
+            }
+            return null;
+        });
+    }
+    
+    @Override
+    public void writeBlob(String blobName,
+                          boolean failIfAlreadyExists,
+                          boolean atomic,
+                          CheckedConsumer<OutputStream, IOException> writer) throws IOException {
+        try (
+                ChunkedBlobOutputStream<PartETag> out = new ChunkedBlobOutputStream<PartETag>(
+                        blobStore.bigArrays(), blobStore.bufferSizeInBytes()) {
+                    
+                    private final SetOnce<String> uploadId = new SetOnce<>();
+                    
+                    @Override
+                    protected void flushBuffer() throws IOException {
+                        flushBuffer(false);
+                    }
+                    
+                    private void flushBuffer(boolean lastPart) throws IOException {
+                        if (buffer.size() == 0) {
+                            return;
+                        }
+                        if (flushedBytes == 0L) {
+                            assert lastPart == false : "use single part upload if there's only a single part";
+                            uploadId.set(SocketAccess.doPrivileged(() ->
+                                    blobStore.client().initiateMultipartUpload(initiateMultiPartUpload(blobName)).getUploadId()));
+                            if (Strings.isEmpty(uploadId.get())) {
+                                throw new IOException("Failed to initialize multipart upload " + blobName);
+                            }
+                        }
+                        assert lastPart == false || successful : "must only write last part if successful";
+                        final UploadPartRequest uploadRequest = createPartUploadRequest(
+                                buffer.bytes().streamInput(), uploadId.get(), parts.size() + 1, blobName, buffer.size(), lastPart);
+                        final UploadPartResult uploadResponse =
+                                SocketAccess.doPrivileged(() -> blobStore.client().uploadPart(uploadRequest));
+                        finishPart(uploadResponse.getPartETag());
+                    }
+                    
+                    @Override
+                    protected void onCompletion() throws IOException {
+                        if (flushedBytes == 0L) {
+                            writeBlob(blobName, buffer.bytes(), failIfAlreadyExists);
+                        } else {
+                            flushBuffer(true);
+                            final CompleteMultipartUploadRequest complRequest =
+                                    new CompleteMultipartUploadRequest(blobStore.bucket(), blobName, uploadId.get(), parts);
+                            SocketAccess.doPrivilegedVoid(() -> blobStore.client().completeMultipartUpload(complRequest));
+                        }
+                    }
+                    
+                    @Override
+                    protected void onFailure() {
+                        if (Strings.hasText(uploadId.get())) {
+                            abortMultiPartUpload(uploadId.get(), blobName);
+                        }
+                    }
+                }) {
+            writer.accept(out);
+            out.markSuccess();
         }
     }
-
+    
+    private UploadPartRequest createPartUploadRequest(InputStream stream,
+                                                      String uploadId,
+                                                      int number,
+                                                      String blobName,
+                                                      long size,
+                                                      boolean lastPart) {
+        final UploadPartRequest uploadRequest = new UploadPartRequest();
+        uploadRequest.setBucketName(blobStore.bucket());
+        uploadRequest.setKey(blobName);
+        uploadRequest.setUploadId(uploadId);
+        uploadRequest.setPartNumber(number);
+        uploadRequest.setInputStream(stream);
+        uploadRequest.setPartSize(size);
+        uploadRequest.setLastPart(lastPart);
+        return uploadRequest;
+    }
+    
+    private void abortMultiPartUpload(String uploadId, String blobName) {
+        final AbortMultipartUploadRequest abortRequest =
+                new AbortMultipartUploadRequest(blobStore.bucket(), blobName, uploadId);
+        SocketAccess.doPrivilegedVoid(() -> blobStore.client().abortMultipartUpload(abortRequest));
+    }
+    
+    private InitiateMultipartUploadRequest initiateMultiPartUpload(String blobName) {
+        final InitiateMultipartUploadRequest initRequest = new InitiateMultipartUploadRequest(blobStore.bucket(), blobName);
+        return initRequest;
+    }
+    
+    // package private for testing
+    long getLargeBlobThresholdInBytes() {
+        return blobStore.bufferSizeInBytes();
+    }
+    
     @Override
     public void writeBlobAtomic(String blobName, BytesReference bytes, boolean failIfAlreadyExists) throws IOException {
         writeBlob(blobName, bytes, failIfAlreadyExists);
     }
 
-    void doSingleUpload(String blobName, InputStream inputStream, long blobSize) throws IOException {
-        if (blobSize > COSService.MAX_SINGLE_FILE_SIZE.getBytes()) {
-            throw new IllegalArgumentException("Upload request size [" + blobSize + "] can't be larger than max single file size");
-        }
-        ObjectMetadata meta = new ObjectMetadata();
-        meta.setContentLength(blobSize);
-        PutObjectRequest putObjectRequest =
-                new PutObjectRequest(blobStore.bucket(), buildKey(blobName), inputStream, meta);
-        try {
-            PutObjectResult putObjectResult = SocketAccess.doPrivileged(() ->
-                    blobStore.client().putObject(putObjectRequest));
-        } catch (CosServiceException e) {
-            throw new IOException("Exception when write blob " + blobName, e);
-        } catch (CosClientException e) {
-            throw new IOException("Exception when write blob " + blobName, e);
-        }
-    }
-
-    void doMultipartUpload(String blobName, InputStream inputStream, long blobSize) throws IOException {
-        long partSize = COSService.MAX_SINGLE_FILE_SIZE.getBytes();
-        if (blobSize <= COSService.MAX_SINGLE_FILE_SIZE.getBytes()) {
-            throw new IllegalArgumentException("Upload multipart request size [" + blobSize + "] can't be smaller than max single file size");
-        }
-        final Tuple<Long, Long> multiparts = numberOfMultiparts(blobSize, partSize);
-
-        final int nbParts = multiparts.v1().intValue();
-        final long lastPartSize = multiparts.v2();
-        assert blobSize == (nbParts - 1) * partSize + lastPartSize : "blobSize does not match multipart sizes";
-
-        final SetOnce<String> uploadId = new SetOnce<>();
-        final String bucketName = blobStore.bucket();
-        boolean success = false;
-
-        try {
-            final InitiateMultipartUploadRequest request = new InitiateMultipartUploadRequest(bucketName, buildKey(blobName));
-            InitiateMultipartUploadResult initResult = SocketAccess.doPrivileged(() ->
-                    blobStore.client().initiateMultipartUpload(request));
-            uploadId.set(initResult.getUploadId());
-            if (Strings.isEmpty(uploadId.get())) {
-                throw new IOException("Failed to initialize multipart upload " + blobName);
-            }
-            final List<PartETag> parts = new ArrayList<>();
-
-            long bytesCount = 0;
-            for (int i = 1; i <= nbParts; i++) {
-                UploadPartRequest uploadPartRequest = new UploadPartRequest();
-                uploadPartRequest.setBucketName(blobStore.bucket());
-                uploadPartRequest.setKey(buildKey(blobName));
-                uploadPartRequest.setUploadId(uploadId.get());
-                uploadPartRequest.setInputStream(inputStream);
-                uploadPartRequest.setPartNumber(i);
-
-                if (i < nbParts) {
-                    uploadPartRequest.setPartSize(partSize);
-                    uploadPartRequest.setLastPart(false);
-                } else {
-                    uploadPartRequest.setPartSize(lastPartSize);
-                    uploadPartRequest.setLastPart(true);
-                }
-                bytesCount += uploadPartRequest.getPartSize();
-
-                final UploadPartResult uploadResponse = SocketAccess.doPrivileged(() ->
-                        blobStore.client().uploadPart(uploadPartRequest));
-                parts.add(uploadResponse.getPartETag());
-            }
-
-            if (bytesCount != blobSize) {
-                throw new IOException("Failed to execute multipart upload for [" + blobName + "], expected " + blobSize
-                        + "bytes sent but got " + bytesCount);
-            }
-
-            CompleteMultipartUploadRequest completeMultipartUploadRequest = new CompleteMultipartUploadRequest(blobStore.bucket(), buildKey(blobName), uploadId.get(), parts);
-            SocketAccess.doPrivileged(() ->
-                    blobStore.client().completeMultipartUpload(completeMultipartUploadRequest));
-            success = true;
-
-        } catch (CosClientException e) {
-            throw new IOException("Unable to upload object [" + blobName + "] using multipart upload", e);
-        } finally {
-            if (success == false && Strings.hasLength(uploadId.get())) {
-                final AbortMultipartUploadRequest aboutRequest = new AbortMultipartUploadRequest(blobStore.bucket(), buildKey(blobName), uploadId.get());
-                SocketAccess.doPrivilegedVoid(() ->
-                        blobStore.client().abortMultipartUpload(aboutRequest));
-            }
-        }
-    }
-
     @Override
+    @SuppressWarnings("unchecked")
     public DeleteResult delete() throws IOException {
         final AtomicLong deletedBlobs = new AtomicLong();
         final AtomicLong deletedBytes = new AtomicLong();
         try {
             ObjectListing prevListing = null;
-            while(true) {
+            while (true) {
                 ObjectListing list;
                 if (prevListing != null) {
                     final ObjectListing finalPrevListing = prevListing;
@@ -216,17 +228,27 @@ public class COSBlobContainer extends AbstractBlobContainer {
                     listObjectsRequest.setPrefix(keyPath);
                     list = SocketAccess.doPrivileged(() -> blobStore.client().listObjects(listObjectsRequest));
                 }
-                final List<String> blobsToDelete = new ArrayList<>();
-                list.getObjectSummaries().forEach(cosObjectSummary -> {
-                    deletedBlobs.incrementAndGet();
-                    deletedBytes.addAndGet(cosObjectSummary.getSize());
-                    blobsToDelete.add(cosObjectSummary.getKey());
-                });
+                
+                final Iterator<COSObjectSummary> objectSummaryIterator = list.getObjectSummaries().iterator();
+                final Iterator<String> blobNameIterator = new Iterator<String>() {
+                    @Override
+                    public boolean hasNext() {
+                        return objectSummaryIterator.hasNext();
+                    }
+                    
+                    @Override
+                    public String next() {
+                        final COSObjectSummary summary = objectSummaryIterator.next();
+                        deletedBlobs.incrementAndGet();
+                        deletedBytes.addAndGet(summary.getSize());
+                        return summary.getKey();
+                    }
+                };
                 if (list.isTruncated()) {
-                    doDeleteBlobs(blobsToDelete, false);
+                    doDeleteBlobs(blobNameIterator, false);
                     prevListing = list;
                 } else {
-                    doDeleteBlobs(CollectionUtils.appendToCopy(blobsToDelete, keyPath), false);
+                    doDeleteBlobs(Iterators.concat(blobNameIterator, Collections.singletonList(keyPath).iterator()), false);
                     break;
                 }
             }
@@ -237,62 +259,71 @@ public class COSBlobContainer extends AbstractBlobContainer {
     }
 
     @Override
-    public void deleteBlobsIgnoringIfNotExists(List<String> blobNames) throws IOException {
+    public void deleteBlobsIgnoringIfNotExists(Iterator<String> blobNames) throws IOException {
         doDeleteBlobs(blobNames, true);
     }
 
-    private void doDeleteBlobs(List<String> blobNames, boolean relative) throws IOException {
-        if (blobNames.isEmpty()) {
+    private void doDeleteBlobs(Iterator<String> blobNames, boolean relative) throws IOException {
+        if (blobNames.hasNext() == false) {
             return;
         }
-        final Set<String> outstanding;
+        final Iterator<String> outstanding;
         if (relative) {
-            outstanding = blobNames.stream().map(this::buildKey).collect(Collectors.toSet());
+            outstanding = new Iterator<String>() {
+                @Override
+                public boolean hasNext() {
+                    return blobNames.hasNext();
+                }
+                
+                @Override
+                public String next() {
+                    return buildKey(blobNames.next());
+                }
+            };
         } else {
-            outstanding = new HashSet<>(blobNames);
+            outstanding = blobNames;
         }
+        
+        final List<String> partition = new ArrayList<>();
         try {
-            final List<DeleteObjectsRequest> deleteRequests = new ArrayList<>();
-            final List<String> partition = new ArrayList<>();
-            for (String key : outstanding) {
-                partition.add(key);
-                if (partition.size() == MAX_BULK_DELETES) {
-                    deleteRequests.add(bulkDelete(blobStore.bucket(), partition));
-                    partition.clear();
-                }
-            }
-            if (partition.isEmpty() == false) {
-                deleteRequests.add(bulkDelete(blobStore.bucket(), partition));
-            }
-            SocketAccess.doPrivilegedVoid( () -> {
-                CosClientException aex = null;
-                for (DeleteObjectsRequest deleteRequest : deleteRequests) {
-                    List<String> keyInRequest = deleteRequest.getKeys().stream().map(DeleteObjectsRequest.KeyVersion::getKey).collect(Collectors.toList());
-                    try {
-                        blobStore.client().deleteObjects(deleteRequest);
-                        outstanding.removeAll(keyInRequest);
-                    } catch (MultiObjectDeleteException e) {
-                        outstanding.removeAll(keyInRequest);
-                        outstanding.addAll(
-                                e.getErrors().stream().map(MultiObjectDeleteException.DeleteError::getKey).collect(Collectors.toList())
-                        );
-                        logger.warn(
-                                () -> new ParameterizedMessage("Failed to delete some blobs {}", e.getErrors()
-                                        .stream().map(err -> "[" + err.getKey() + "][" + err.getCode() + "][" + err.getMessage() + "]")
-                                        .collect(Collectors.toList())), e);
-                        aex = ExceptionsHelper.useOrSuppress(aex, e);
-                    } catch (CosClientException e) {
-                        aex = ExceptionsHelper.useOrSuppress(aex, e);
+            // S3 API only allows 1k blobs per delete so we split up the given blobs into requests of max. 1k deletes
+            final AtomicReference<Exception> aex = new AtomicReference<>();
+            SocketAccess.doPrivilegedVoid(() -> {
+                outstanding.forEachRemaining(key -> {
+                    partition.add(key);
+                    if (partition.size() == MAX_BULK_DELETES) {
+                        deletePartition(blobStore, partition, aex);
+                        partition.clear();
                     }
-                }
-                if (aex != null) {
-                    throw aex;
+                });
+                if (partition.isEmpty() == false) {
+                    deletePartition(blobStore, partition, aex);
                 }
             });
+            if (aex.get() != null) {
+                throw aex.get();
+            }
         } catch (Exception e) {
-            throw new IOException("Failed to delete blobs [" + outstanding + "]", e);
+            throw new IOException("Failed to delete blobs " + partition.stream().limit(10).collect(Collectors.toList()), e);
         }
-        assert outstanding.isEmpty();
+    }
+    
+    private void deletePartition(COSBlobStore blobStore, List<String> partition, AtomicReference<Exception> aex) {
+        try {
+            blobStore.client().deleteObjects(bulkDelete(blobStore.bucket(), partition));
+        } catch (MultiObjectDeleteException e) {
+            // We are sending quiet mode requests so we can't use the deleted keys entry on the exception and instead
+            // first remove all keys that were sent in the request and then add back those that ran into an exception.
+            logger.warn(
+                    () -> new ParameterizedMessage("Failed to delete some blobs {}", e.getErrors()
+                            .stream().map(err -> "[" + err.getKey() + "][" + err.getCode() + "][" + err.getMessage() + "]")
+                            .collect(Collectors.toList())), e);
+            aex.set(ExceptionsHelper.useOrSuppress(aex.get(), e));
+        } catch (CosClientException e) {
+            // The AWS client threw any unexpected exception and did not execute the request at all so we do not
+            // remove any keys from the outstanding deletes set.
+            aex.set(ExceptionsHelper.useOrSuppress(aex.get(), e));
+        }
     }
 
     private static DeleteObjectsRequest bulkDelete(String bucket, List<String> blobs) {
@@ -302,15 +333,14 @@ public class COSBlobContainer extends AbstractBlobContainer {
     @Override
     public Map<String, BlobMetadata> listBlobsByPrefix(@Nullable String blobNamePrefix) throws IOException {
         try {
-            return executeListing(generateListObjectsRequest(blobNamePrefix == null ? keyPath : buildKey(blobNamePrefix)))
-                        .stream()
-                        .flatMap(listing -> listing.getObjectSummaries().stream())
-                        .map(summary -> new PlainBlobMetadata(summary.getKey().substring(keyPath.length()), summary.getSize()))
-                        .collect(Collectors.toMap(PlainBlobMetadata::name, Function.identity()));
-        } catch (CosClientException e) {
+            return executeListing(blobStore, listObjectsRequest(blobNamePrefix == null ? keyPath : buildKey(blobNamePrefix)))
+                    .stream()
+                    .flatMap(listing -> listing.getObjectSummaries().stream())
+                    .map(summary -> new PlainBlobMetadata(summary.getKey().substring(keyPath.length()), summary.getSize()))
+                    .collect(Collectors.toMap(PlainBlobMetadata::name, Function.identity()));
+        } catch (final CosClientException e) {
             throw new IOException("Exception when listing blobs by prefix [" + blobNamePrefix + "]", e);
         }
-
     }
 
     @Override
@@ -321,25 +351,29 @@ public class COSBlobContainer extends AbstractBlobContainer {
     @Override
     public Map<String, BlobContainer> children() throws IOException {
         try {
-            Map<String, BlobContainer> a = executeListing(generateListObjectsRequest(keyPath)).stream()
-                    .flatMap(listing -> listing.getCommonPrefixes().stream())
+            return executeListing(blobStore, listObjectsRequest(keyPath)).stream()
+                    .flatMap(listing -> {
+                        assert listing.getObjectSummaries().stream().noneMatch(s -> {
+                            for (String commonPrefix : listing.getCommonPrefixes()) {
+                                if (s.getKey().substring(keyPath.length()).startsWith(commonPrefix)) {
+                                    return true;
+                                }
+                            }
+                            return false;
+                        }) : "Response contained children for listed common prefixes.";
+                        return listing.getCommonPrefixes().stream();
+                    })
                     .map(prefix -> prefix.substring(keyPath.length()))
                     .filter(name -> name.isEmpty() == false)
+                    // Stripping the trailing slash off of the common prefix
                     .map(name -> name.substring(0, name.length() - 1))
                     .collect(Collectors.toMap(Function.identity(), name -> blobStore.blobContainer(path().add(name))));
-
-            return executeListing(generateListObjectsRequest(keyPath)).stream()
-                    .flatMap(listing -> listing.getCommonPrefixes().stream())
-                    .map(prefix -> prefix.substring(keyPath.length()))
-                    .filter(name -> name.isEmpty() == false)
-                    .map(name -> name.substring(0, name.length() - 1))
-                    .collect(Collectors.toMap(Function.identity(), name -> blobStore.blobContainer(path().add(name))));
-        } catch (CosClientException e) {
+        } catch (final CosClientException e) {
             throw new IOException("Exception when listing children of [" + path().buildAsString() + ']', e);
         }
     }
 
-    private List<ObjectListing> executeListing(ListObjectsRequest listObjectsRequest) {
+    private List<ObjectListing> executeListing(COSBlobStore blobStore, ListObjectsRequest listObjectsRequest) {
         final List<ObjectListing> results = new ArrayList<>();
         ObjectListing prevListing = null;
         while (true) {
@@ -360,7 +394,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
         return results;
     }
 
-    private ListObjectsRequest generateListObjectsRequest(String keyPath) {
+    private ListObjectsRequest listObjectsRequest(String keyPath) {
         ListObjectsRequest listObjectsRequest = new ListObjectsRequest();
         listObjectsRequest.withBucketName(blobStore.bucket()).withPrefix(keyPath).withDelimiter("/");
         return listObjectsRequest;
@@ -370,6 +404,110 @@ public class COSBlobContainer extends AbstractBlobContainer {
         return keyPath + blobName;
     }
 
+    /**
+     * Uploads a blob using a single upload request
+     */
+    void executeSingleUpload(final COSBlobStore blobStore,
+                             final String blobName,
+                             final InputStream input,
+                             final long blobSize) throws IOException {
+        
+        // Extra safety checks
+        if (blobSize > MAX_FILE_SIZE.getBytes()) {
+            throw new IllegalArgumentException("Upload request size [" + blobSize + "] can't be larger than " + MAX_FILE_SIZE);
+        }
+        if (blobSize > blobStore.bufferSizeInBytes()) {
+            throw new IllegalArgumentException("Upload request size [" + blobSize + "] can't be larger than buffer size");
+        }
+        
+        final ObjectMetadata md = new ObjectMetadata();
+        md.setContentLength(blobSize);
+        final PutObjectRequest putRequest = new PutObjectRequest(blobStore.bucket(), blobName, input, md);
+        
+        try {
+            SocketAccess.doPrivilegedVoid(() -> {
+                blobStore.client().putObject(putRequest);
+            });
+        } catch (final CosClientException e) {
+            throw new IOException("Unable to upload object [" + blobName + "] using a single upload", e);
+        }
+    }
+    
+    /**
+     * Uploads a blob using multipart upload requests.
+     */
+    void executeMultipartUpload(final COSBlobStore blobStore,
+                                final String blobName,
+                                final InputStream input,
+                                final long blobSize) throws IOException {
+        
+        ensureMultiPartUploadSize(blobSize);
+        final long partSize = blobStore.bufferSizeInBytes();
+        final Tuple<Long, Long> multiparts = numberOfMultiparts(blobSize, partSize);
+        
+        if (multiparts.v1() > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("Too many multipart upload requests, maybe try a larger buffer size?");
+        }
+        
+        final int nbParts = multiparts.v1().intValue();
+        final long lastPartSize = multiparts.v2();
+        assert blobSize == (((nbParts - 1) * partSize) + lastPartSize) : "blobSize does not match multipart sizes";
+        
+        final SetOnce<String> uploadId = new SetOnce<>();
+        final String bucketName = blobStore.bucket();
+        boolean success = false;
+        try {
+            
+            uploadId.set(SocketAccess.doPrivileged(() ->
+                    blobStore.client().initiateMultipartUpload(initiateMultiPartUpload(blobName)).getUploadId()));
+            if (Strings.isEmpty(uploadId.get())) {
+                throw new IOException("Failed to initialize multipart upload " + blobName);
+            }
+            
+            final List<PartETag> parts = new ArrayList<>();
+            
+            long bytesCount = 0;
+            for (int i = 1; i <= nbParts; i++) {
+                final boolean lastPart = i == nbParts;
+                final UploadPartRequest uploadRequest =
+                        createPartUploadRequest(input, uploadId.get(), i, blobName, lastPart ? lastPartSize : partSize, lastPart);
+                bytesCount += uploadRequest.getPartSize();
+                
+                final UploadPartResult uploadResponse = SocketAccess.doPrivileged(() -> blobStore.client().uploadPart(uploadRequest));
+                parts.add(uploadResponse.getPartETag());
+            }
+            
+            if (bytesCount != blobSize) {
+                throw new IOException("Failed to execute multipart upload for [" + blobName + "], expected " + blobSize
+                        + "bytes sent but got " + bytesCount);
+            }
+            
+            final CompleteMultipartUploadRequest complRequest = new CompleteMultipartUploadRequest(bucketName, blobName, uploadId.get(),
+                    parts);
+            SocketAccess.doPrivilegedVoid(() -> blobStore.client().completeMultipartUpload(complRequest));
+            success = true;
+            
+        } catch (final CosClientException e) {
+            throw new IOException("Unable to upload object [" + blobName + "] using multipart upload", e);
+        } finally {
+            if ((success == false) && Strings.hasLength(uploadId.get())) {
+                abortMultiPartUpload(uploadId.get(), blobName);
+            }
+        }
+    }
+    
+    // non-static, package private for testing
+    void ensureMultiPartUploadSize(final long blobSize) {
+        if (blobSize > MAX_FILE_SIZE_USING_MULTIPART.getBytes()) {
+            throw new IllegalArgumentException("Multipart upload request size [" + blobSize
+                    + "] can't be larger than " + MAX_FILE_SIZE_USING_MULTIPART);
+        }
+        if (blobSize < MIN_PART_SIZE_USING_MULTIPART.getBytes()) {
+            throw new IllegalArgumentException("Multipart upload request size [" + blobSize
+                    + "] can't be smaller than " + MIN_PART_SIZE_USING_MULTIPART);
+        }
+    }
+    
     /**
      * Returns the number parts of size of {@code partSize} needed to reach {@code totalSize},
      * along with the size of the last (or unique) part.
@@ -384,7 +522,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
             throw new IllegalArgumentException("Part size must be greater than zero");
         }
 
-        if (totalSize == 0L || totalSize <= partSize) {
+        if ((totalSize == 0L) || (totalSize <= partSize)) {
             return Tuple.tuple(1L, totalSize);
         }
 
