@@ -10,7 +10,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.util.IOUtils;
-import org.elasticsearch.common.io.Streams;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -67,9 +66,9 @@ public class CosRetryingInputStream extends InputStream {
                         "requesting beyond end, start = " + start + " offset=" + currentOffset + " end=" + end;
                 getObjectRequest.setRange(Math.addExact(start, currentOffset), end);
             }
-            final COSObject s3Object = SocketAccess.doPrivileged(() -> blobStore.client().getObject(getObjectRequest));
-            this.currentStreamLastOffset = Math.addExact(Math.addExact(start, currentOffset), getStreamLength(s3Object));
-            this.currentStream = s3Object.getObjectContent();
+            final COSObject cosObject = SocketAccess.doPrivileged(() -> blobStore.client().getObject(getObjectRequest));
+            this.currentStreamLastOffset = Math.addExact(Math.addExact(start, currentOffset), getStreamLength(cosObject));
+            this.currentStream = cosObject.getObjectContent();
         } catch (final CosClientException e) {
             if (e instanceof CosServiceException) {
                 if (404 == ((CosServiceException) e).getStatusCode()) {
@@ -176,12 +175,12 @@ public class CosRetryingInputStream extends InputStream {
     
     @Override
     public long skip(long n) {
-        throw new UnsupportedOperationException("S3RetryingInputStream does not support seeking");
+        throw new UnsupportedOperationException("COSRetryingInputStream does not support seeking");
     }
     
     @Override
     public void reset() {
-        throw new UnsupportedOperationException("S3RetryingInputStream does not support seeking");
+        throw new UnsupportedOperationException("COSRetryingInputStream does not support seeking");
     }
     
     // package-private for tests

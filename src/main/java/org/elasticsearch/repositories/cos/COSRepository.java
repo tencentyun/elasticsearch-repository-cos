@@ -5,8 +5,6 @@ import org.apache.logging.log4j.Logger;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRunnable;
-import org.elasticsearch.cluster.ClusterState;
-import org.elasticsearch.cluster.metadata.Metadata;
 import org.elasticsearch.cluster.metadata.RepositoryMetadata;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.blobstore.BlobPath;
@@ -24,11 +22,8 @@ import org.elasticsearch.monitor.jvm.JvmInfo;
 import org.elasticsearch.repositories.FinalizeSnapshotContext;
 import org.elasticsearch.repositories.RepositoryData;
 import org.elasticsearch.repositories.RepositoryException;
-import org.elasticsearch.repositories.ShardGenerations;
-import org.elasticsearch.repositories.blobstore.BlobStoreRepository;
 import org.elasticsearch.repositories.blobstore.MeteredBlobStoreRepository;
 import org.elasticsearch.snapshots.SnapshotId;
-import org.elasticsearch.snapshots.SnapshotInfo;
 import org.elasticsearch.snapshots.SnapshotsService;
 import org.elasticsearch.threadpool.Scheduler;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -37,7 +32,6 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 
 public class COSRepository extends MeteredBlobStoreRepository {
     private static final Logger logger = LogManager.getLogger(COSRepository.class);
@@ -75,7 +69,6 @@ public class COSRepository extends MeteredBlobStoreRepository {
     
     /**
      * Maximum size of parts that can be uploaded using the Multipart Upload API.
-     * (see http://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html)
      */
     static final ByteSizeValue MAX_PART_SIZE_USING_MULTIPART = MAX_FILE_SIZE;
     
@@ -85,7 +78,7 @@ public class COSRepository extends MeteredBlobStoreRepository {
     static final ByteSizeValue MAX_FILE_SIZE_USING_MULTIPART = new ByteSizeValue(5, ByteSizeUnit.TB);
     
     /**
-     * Default is to use 100MB (S3 defaults) for heaps above 2GB and 5% of
+     * Default is to use 100MB (Cos defaults) for heaps above 2GB and 5% of
      * the available memory for smaller heaps.
      */
     private static final ByteSizeValue DEFAULT_BUFFER_SIZE = new ByteSizeValue(
@@ -98,7 +91,7 @@ public class COSRepository extends MeteredBlobStoreRepository {
     
     /**
      * Minimum threshold below which the chunk is uploaded using a single request. Beyond this threshold,
-     * the S3 repository will use the AWS Multipart Upload API to split the chunk into several parts, each of buffer_size length, and
+     * the COS repository will use the Tencent Cloud Multipart Upload API to split the chunk into several parts, each of buffer_size length, and
      * to upload each part in its own request. Note that setting a buffer size lower than 5mb is not allowed since it will prevents the
      * use of the Multipart API and may result in upload errors. Defaults to the minimum between 100MB and 5% of the heap size.
      */
@@ -109,10 +102,10 @@ public class COSRepository extends MeteredBlobStoreRepository {
      * Artificial delay to introduce after a snapshot finalization or delete has finished so long as the repository is still using the
      * backwards compatible snapshot format from before
      * {@link org.elasticsearch.snapshots.SnapshotsService#SHARD_GEN_IN_REPO_DATA_VERSION} ({@link org.elasticsearch.Version#V_7_6_0}).
-     * This delay is necessary so that the eventually consistent nature of AWS S3 does not randomly result in repository corruption when
+     * This delay is necessary so that the eventually consistent nature of Cos does not randomly result in repository corruption when
      * doing repository operations in rapid succession on a repository in the old metadata format.
-     * This setting should not be adjusted in production when working with an AWS S3 backed repository. Doing so risks the repository
-     * becoming silently corrupted. To get rid of this waiting period, either create a new S3 repository or remove all snapshots older than
+     * This setting should not be adjusted in production when working with an Cos backed repository. Doing so risks the repository
+     * becoming silently corrupted. To get rid of this waiting period, either create a new Cos repository or remove all snapshots older than
      * {@link org.elasticsearch.Version#V_7_6_0} from the repository which will trigger an upgrade of the repository metadata to the new
      * format and disable the cooldown period.
      */

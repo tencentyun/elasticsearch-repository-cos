@@ -287,7 +287,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
         
         final List<String> partition = new ArrayList<>();
         try {
-            // S3 API only allows 1k blobs per delete so we split up the given blobs into requests of max. 1k deletes
+            // Cos API only allows 1k blobs per delete so we split up the given blobs into requests of max. 1k deletes
             final AtomicReference<Exception> aex = new AtomicReference<>();
             SocketAccess.doPrivilegedVoid(() -> {
                 outstanding.forEachRemaining(key -> {
@@ -321,7 +321,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
                             .collect(Collectors.toList())), e);
             aex.set(ExceptionsHelper.useOrSuppress(aex.get(), e));
         } catch (CosClientException e) {
-            // The AWS client threw any unexpected exception and did not execute the request at all so we do not
+            // The Cos client threw any unexpected exception and did not execute the request at all so we do not
             // remove any keys from the outstanding deletes set.
             aex.set(ExceptionsHelper.useOrSuppress(aex.get(), e));
         }

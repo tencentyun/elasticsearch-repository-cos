@@ -14,7 +14,6 @@ import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.plugins.RepositoryPlugin;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.repositories.Repository;
-import org.elasticsearch.threadpool.ThreadPool;
 
 /**
  * Created by Ethan-Zhang on 30/03/2018.
