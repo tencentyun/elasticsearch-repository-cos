@@ -1,7 +1,5 @@
 package org.elasticsearch.repositories.cos;
 
-import org.elasticsearch.SpecialPermission;
-
 import java.io.IOException;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
