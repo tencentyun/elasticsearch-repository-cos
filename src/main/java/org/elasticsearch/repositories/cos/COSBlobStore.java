@@ -25,42 +25,45 @@ public class COSBlobStore extends AbstractComponent implements BlobStore {
 
     @Override
     public String toString() {
-        return client.getClientConfig().getRegion()+"/"+bucket;
+        return SocketAccess.doPrivileged(() ->
+                client.getClientConfig().getRegion() + "/" + bucket);
     }
 
     @Override
     public void delete(BlobPath path) {
-        ObjectListing prevListing = null;
-        DeleteObjectsRequest multiObjectDeleteRequest = null;
-        ArrayList<DeleteObjectsRequest.KeyVersion> keys = new ArrayList<>();
-        while(true) {
-            ObjectListing list;
-            if (prevListing != null) {
-                list = client.listNextBatchOfObjects(prevListing);
-            } else {
-                list = client.listObjects(bucket, path.buildAsString());
-                multiObjectDeleteRequest = new DeleteObjectsRequest(list.getBucketName());
-            }
-            for(COSObjectSummary summary : list.getObjectSummaries()) {
-                keys.add(new DeleteObjectsRequest.KeyVersion(summary.getKey()));
-                if(keys.size() > 500) {
-                    multiObjectDeleteRequest.setKeys(keys);
-                    client.deleteObjects(multiObjectDeleteRequest);
+        SocketAccess.doPrivilegedVoid(() -> {
+            ObjectListing prevListing = null;
+            DeleteObjectsRequest multiObjectDeleteRequest = null;
+            ArrayList<DeleteObjectsRequest.KeyVersion> keys = new ArrayList<>();
+            while (true) {
+                ObjectListing list;
+                if (prevListing != null) {
+                    list = client.listNextBatchOfObjects(prevListing);
+                } else {
+                    list = client.listObjects(bucket, path.buildAsString());
                     multiObjectDeleteRequest = new DeleteObjectsRequest(list.getBucketName());
-                    keys.clear();
+                }
+                for (COSObjectSummary summary : list.getObjectSummaries()) {
+                    keys.add(new DeleteObjectsRequest.KeyVersion(summary.getKey()));
+                    if (keys.size() > 500) {
+                        multiObjectDeleteRequest.setKeys(keys);
+                        client.deleteObjects(multiObjectDeleteRequest);
+                        multiObjectDeleteRequest = new DeleteObjectsRequest(list.getBucketName());
+                        keys.clear();
+                    }
+                }
+                if (list.isTruncated()) {
+                    prevListing = list;
+                } else {
+                    break;
                 }
             }
-            if(list.isTruncated()) {
-                prevListing = list;
-            } else {
-                break;
-            }
-        }
 
-        if(!keys.isEmpty()) {
-            multiObjectDeleteRequest.setKeys(keys);
-            client.deleteObjects(multiObjectDeleteRequest);
-        }
+            if (!keys.isEmpty()) {
+                multiObjectDeleteRequest.setKeys(keys);
+                client.deleteObjects(multiObjectDeleteRequest);
+            }
+        });
     }
 
     @Override
@@ -70,7 +73,7 @@ public class COSBlobStore extends AbstractComponent implements BlobStore {
 
     @Override
     public void close() {
-        client.shutdown();
+        SocketAccess.doPrivilegedVoid(() -> client.shutdown());
     }
 
     public COSClient client() {

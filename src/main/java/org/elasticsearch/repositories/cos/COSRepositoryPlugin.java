@@ -4,7 +4,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Arrays;
 import java.util.Map;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
+import org.elasticsearch.SpecialPermission;
 import com.qcloud.cos.COSClient;
 import org.elasticsearch.cluster.metadata.RepositoryMetaData;
 import org.elasticsearch.common.xcontent.NamedXContentRegistry;
