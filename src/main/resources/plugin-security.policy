@@ -23,5 +23,5 @@ grant {
 
   // cos client opens socket connections for to access repository
   permission java.net.SocketPermission "*", "connect";
-  permission java.lang.RuntimePermission" "createSecurityManager"
+  permission java.lang.RuntimePermission "createSecurityManager";
 };
