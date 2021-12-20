@@ -30,7 +30,7 @@ PUT _snapshot/my_cos_backup
     "settings": {
         "access_key_id": "xxxxxx",
         "access_key_secret": "xxxxxxx",
-        "bucket": "xxxx-xxxx",
+        "bucket": "不带appId后缀的bucket名",
         "region": "ap-guangzhou",
         "compress": true,
         "chunk_size": "500mb",
