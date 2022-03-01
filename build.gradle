@@ -13,7 +13,7 @@ buildscript {
     repositories {
         mavenLocal()
         mavenCentral()
-        jcenter()
+        maven{ url 'https://plugins.gradle.org/m2/'}
     }
 
     dependencies {
@@ -26,7 +26,7 @@ buildscript {
 apply plugin: 'java'
 apply plugin: 'idea'
 apply plugin: 'elasticsearch.esplugin'
-//apply plugin: 'maven'
+apply plugin: 'maven-publish'
 apply plugin: 'license'
 
 sourceCompatibility = 1.8
@@ -65,20 +65,20 @@ repositories {
 }
 
 dependencies {
-    compile "org.elasticsearch:elasticsearch:" + esVersion
-    compile "com.qcloud:cos_api:5.6.8"
-    compile "commons-codec:commons-codec:1.11"
-    compile "commons-logging:commons-logging:1.2"
-    compile "com.fasterxml.jackson.core:jackson-core:2.10.4"
-    compile "com.fasterxml.jackson.core:jackson-annotations:2.10.4"
-    compile "com.fasterxml.jackson.core:jackson-databind:2.10.4"
-    compile "org.apache.httpcomponents:httpclient:4.5.10"
-    compile "org.apache.httpcomponents:httpcore:4.4.12"
-    compile "org.apache.logging.log4j:log4j-api:2.11.1"
-    compile "org.apache.logging.log4j:log4j-core:2.11.1"
-    compile "org.slf4j:slf4j-api:1.7.21"
-    compile "org.slf4j:slf4j-log4j12:1.7.21"
-    compile "log4j:log4j:1.2.17"
+    implementation "org.elasticsearch:elasticsearch:" + esVersion
+    implementation "com.qcloud:cos_api:5.6.8"
+    implementation "commons-codec:commons-codec:1.11"
+    implementation "commons-logging:commons-logging:1.2"
+    implementation "com.fasterxml.jackson.core:jackson-core:2.10.4"
+    implementation "com.fasterxml.jackson.core:jackson-annotations:2.10.4"
+    implementation "com.fasterxml.jackson.core:jackson-databind:2.10.4"
+    implementation "org.apache.httpcomponents:httpclient:4.5.10"
+    implementation "org.apache.httpcomponents:httpcore:4.4.12"
+    implementation "org.apache.logging.log4j:log4j-api:2.11.1"
+    implementation "org.apache.logging.log4j:log4j-core:2.11.1"
+    implementation "org.slf4j:slf4j-api:1.7.21"
+    implementation "org.slf4j:slf4j-log4j12:1.7.21"
+    implementation "log4j:log4j:1.2.17"
 }
 
 configurations.all {
