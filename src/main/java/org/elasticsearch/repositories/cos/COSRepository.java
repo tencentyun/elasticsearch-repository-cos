@@ -16,7 +16,6 @@ import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.common.util.BigArrays;
-import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.indices.recovery.RecoverySettings;
 import org.elasticsearch.monitor.jvm.JvmInfo;
 import org.elasticsearch.repositories.FinalizeSnapshotContext;
@@ -27,6 +26,7 @@ import org.elasticsearch.snapshots.SnapshotId;
 import org.elasticsearch.snapshots.SnapshotsService;
 import org.elasticsearch.threadpool.Scheduler;
 import org.elasticsearch.threadpool.ThreadPool;
+import org.elasticsearch.xcontent.NamedXContentRegistry;
 
 import java.util.Collection;
 import java.util.Map;
@@ -143,7 +143,7 @@ public class COSRepository extends MeteredBlobStoreRepository {
         // qcloud-sdk-v5 app_id directly joined with bucket name
         if (Strings.hasLength(app_id)) {
             this.bucket = bucket + "-" + app_id;
-            deprecationLogger.deprecate(DeprecationCategory.SECURITY, "cos_repository_secret_settings",
+            deprecationLogger.critical(DeprecationCategory.SECURITY, "cos_repository_secret_settings",
                     "cos repository bucket already contain app_id, and app_id will not be supported for the cos repository in future releases");
         } else {
             this.bucket = bucket;
@@ -151,7 +151,7 @@ public class COSRepository extends MeteredBlobStoreRepository {
 
         if (basePath.startsWith("/")) {
             basePath = basePath.substring(1);
-            deprecationLogger.deprecate(DeprecationCategory.SECURITY, "cos_repository_secret_settings",
+            deprecationLogger.critical(DeprecationCategory.SECURITY, "cos_repository_secret_settings",
                     "cos repository base_path trimming the leading `/`, and leading `/` will not be supported for the cos repository in future releases");
         }
 

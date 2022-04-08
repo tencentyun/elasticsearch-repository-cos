@@ -7,13 +7,13 @@ import java.util.Map;
 import org.elasticsearch.cluster.metadata.RepositoryMetadata;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.util.BigArrays;
-import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.indices.recovery.RecoverySettings;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.plugins.RepositoryPlugin;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.repositories.Repository;
+import org.elasticsearch.xcontent.NamedXContentRegistry;
 
 /**
  * Created by Ethan-Zhang on 30/03/2018.
