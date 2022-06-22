@@ -28,8 +28,9 @@ PUT _snapshot/my_cos_backup
 {
     "type": "cos",
     "settings": {
-        "access_key_id": "xxxxxx",
-        "access_key_secret": "xxxxxxx",
+        "access_key_id": "xxxxxx", // 可选
+        "access_key_secret": "xxxxxxx", // 可选
+        "account": "xxxxxxx", // 可选
         "bucket": "不带appId后缀的bucket名",
         "region": "ap-guangzhou",
         "compress": true,
@@ -39,11 +40,33 @@ PUT _snapshot/my_cos_backup
     }
 }
 ```
+* account：可选，secret账户名，匹配keystore中的 `<account>`
+* access_key_id & access_key_secret：可选，指定cos秘钥，**优先于通过account获取的secret**
 * bucket: COS Bucket 名字，**不要带-{appId}后缀**。
 * region：COS Bucket 地域，建议与 ES 集群同地域。
 * base_path：备份目录，形式如/dir1/dir2/dir3，需要写最开头的’/‘，目录最后不需要'/'。
 * app_id: 腾讯云账号 APPID，将在6.8之后的版本废弃，app_id 已包含在bucket参数中。
 
+#### 使用 elasticsearch-keystore 存储secret (可选)
+由于settings的设置内容会被`GET _snapshot`接口完全获取，导致secret数据暴露。如果需要对secret加密，可选用此方式存储秘钥    
+* settings中如果指定了access_key_id & access_key_key，则**settings配置优先，keystore配置不生效**    
+* `<account>`为自定义账户名，匹配`settings.account`     
+* 如果是修改secret，关联了此账户的仓库需要删除后重建，变更才会生效
+
+设置步骤：    
+1. 添加账户    
+`./bin/elasticsearch-keystore add qcloud.cos.client.<account>.account`   
+不需要输入密码
+2. elasticsearch-keystore中添加 secret_id & secret_key    
+`./bin/elasticsearch-keystore add qcloud.cos.client.<account>.secret_id`    
+`./bin/elasticsearch-keystore add qcloud.cos.client.<account>.secret_key`    
+或者  
+`./bin/elasticsearch-keystore add-file qcloud.cos.client.<account>.secret_id <secret_id_file_full_path>`    
+`./bin/elasticsearch-keystore add-file qcloud.cos.client.<account>.secret_key <secret_key_file_full_path>`   
+3. 刷新keystore    
+`bin/elasticsearch-keystore upgrade`   
+4. reload secure    
+`POST /_nodes/reload_secure_settings `
 
 ### 列出仓库信息
 ```
