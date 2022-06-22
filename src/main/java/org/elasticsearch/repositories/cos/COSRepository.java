@@ -30,11 +30,7 @@ public class COSRepository extends BlobStoreRepository {
      */
     static final Setting<Boolean> COMPRESS_SETTING = Setting.boolSetting("compress", false);
 
-
-    COSRepository(RepositoryMetaData metadata,
-                  NamedXContentRegistry namedXContentRegistry,
-                  COSService cos,
-                  ThreadPool threadpool) {
+    COSRepository(RepositoryMetaData metadata, NamedXContentRegistry namedXContentRegistry, COSService cos, ThreadPool threadpool) {
         super(metadata, COMPRESS_SETTING.get(metadata.settings()), namedXContentRegistry, threadpool);
         this.service = cos;
         String bucket = COSClientSettings.BUCKET.get(metadata.settings());
@@ -46,14 +42,18 @@ public class COSRepository extends BlobStoreRepository {
         // qcloud-sdk-v5 app_id directly joined with bucket name
         if (Strings.hasLength(app_id)) {
             this.bucket = bucket + "-" + app_id;
-            deprecationLogger.deprecated("cos repository bucket already contain app_id, and app_id will not be supported for the cos repository in future releases");
+            deprecationLogger.deprecated(
+                "cos repository bucket already contain app_id, and app_id will not be supported for the cos repository in future releases"
+            );
         } else {
             this.bucket = bucket;
         }
 
         if (basePath.startsWith("/")) {
             basePath = basePath.substring(1);
-            deprecationLogger.deprecated("cos repository base_path trimming the leading `/`, and leading `/` will not be supported for the cos repository in future releases");
+            deprecationLogger.deprecated(
+                "cos repository base_path trimming the leading `/`, and leading `/` will not be supported for the cos repository in future releases"
+            );
         }
 
         if (Strings.hasLength(basePath)) {
@@ -64,20 +64,18 @@ public class COSRepository extends BlobStoreRepository {
         this.compress = COSClientSettings.COMPRESS.get(metadata.settings());
         this.chunkSize = COSClientSettings.CHUNK_SIZE.get(metadata.settings());
 
-        logger.trace("using bucket [{}], base_path [{}], chunk_size [{}], compress [{}]", bucket,
-                basePath, chunkSize, compress);
+        logger.trace("using bucket [{}], base_path [{}], chunk_size [{}], compress [{}]", bucket, basePath, chunkSize, compress);
     }
 
     @Override
     protected COSBlobStore createBlobStore() {
-        return new COSBlobStore(this.service.getClient(), this.bucket);
+        return new COSBlobStore(this.service.createClient(metadata), this.bucket);
     }
 
     @Override
     public BlobPath basePath() {
         return basePath;
     }
-
 
     @Override
     protected ByteSizeValue chunkSize() {
