@@ -66,7 +66,7 @@ repositories {
 
 dependencies {
     implementation "org.elasticsearch:elasticsearch:" + esVersion
-    implementation "com.qcloud:cos_api:5.6.8"
+    implementation "com.qcloud:cos_api:5.6.91"
     implementation "commons-codec:commons-codec:1.11"
     implementation "commons-logging:commons-logging:1.2"
     implementation "com.fasterxml.jackson.core:jackson-core:2.10.4"
