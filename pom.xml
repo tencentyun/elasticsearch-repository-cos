@@ -6,10 +6,10 @@
 
     <groupId>com.tencent.cloud.es</groupId>
     <artifactId>repository-cos</artifactId>
-    <version>6.4.0</version>
+    <version>6.4.3</version>
 
     <properties>
-        <elasticsearch.version>6.4.0</elasticsearch.version>
+        <elasticsearch.version>6.4.3</elasticsearch.version>
         <maven.compiler.target>1.8</maven.compiler.target>
         <project.description>elasticsearch-repository-cos</project.description>
         <elasticsearch.assembly.descriptor>${project.basedir}/src/main/assemblies/plugin.xml
@@ -75,7 +75,21 @@
         <dependency>
             <groupId>com.qcloud</groupId>
             <artifactId>cos_api</artifactId>
-            <version>5.6.8</version>
+            <version>5.6.98</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>javax.xml.bind</groupId>
+                    <artifactId>jaxb-api</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.fasterxml.jackson.core</groupId>
+                    <artifactId>jackson-annotations</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bouncycastle</groupId>
+                    <artifactId>bcprov-jdk15on</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
     </dependencies>
