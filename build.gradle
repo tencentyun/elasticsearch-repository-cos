@@ -66,7 +66,7 @@ repositories {
 
 dependencies {
     implementation "org.elasticsearch:elasticsearch:" + esVersion
-    implementation "com.qcloud:cos_api:5.6.91"
+    implementation "com.qcloud:cos_api:5.6.98"
     implementation "commons-codec:commons-codec:1.11"
     implementation "commons-logging:commons-logging:1.2"
     implementation "com.fasterxml.jackson.core:jackson-core:2.10.4"
@@ -87,6 +87,7 @@ configurations.all {
     resolutionStrategy.force "commons-codec:commons-codec:1.11"
     resolutionStrategy.force "commons-logging:commons-logging:1.2"
     resolutionStrategy.force "org.apache.httpcomponents:httpclient:4.5.10"
+    exclude group:"com.fasterxml.jackson.dataformat"
 }
 
 bundlePlugin {
