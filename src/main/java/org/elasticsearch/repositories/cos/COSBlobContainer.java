@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import com.qcloud.cos.internal.CosServiceRequest;
 import org.apache.lucene.util.SetOnce;
 import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.Strings;
@@ -86,6 +87,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
         meta.setContentLength(blobSize);
         PutObjectRequest putObjectRequest =
                 new PutObjectRequest(blobStore.bucket(), buildKey(blobName), inputStream, meta);
+        setRequestHeader(putObjectRequest);
         try {
             PutObjectResult putObjectResult = SocketAccess.doPrivileged(() ->
                     blobStore.client().putObject(putObjectRequest));
@@ -114,6 +116,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
 
         try {
             final InitiateMultipartUploadRequest request = new InitiateMultipartUploadRequest(bucketName, buildKey(blobName));
+            setRequestHeader(request);
             InitiateMultipartUploadResult initResult = SocketAccess.doPrivileged(() ->
                     blobStore.client().initiateMultipartUpload(request));
             uploadId.set(initResult.getUploadId());
@@ -130,6 +133,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
                 uploadPartRequest.setUploadId(uploadId.get());
                 uploadPartRequest.setInputStream(inputStream);
                 uploadPartRequest.setPartNumber(i);
+                setRequestHeader(uploadPartRequest);
 
                 if (i < nbParts) {
                     uploadPartRequest.setPartSize(partSize);
@@ -151,6 +155,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
             }
 
             CompleteMultipartUploadRequest completeMultipartUploadRequest = new CompleteMultipartUploadRequest(blobStore.bucket(), buildKey(blobName), uploadId.get(), parts);
+            setRequestHeader(completeMultipartUploadRequest);
             SocketAccess.doPrivileged(() ->
                     blobStore.client().completeMultipartUpload(completeMultipartUploadRequest));
             success = true;
@@ -160,6 +165,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
         } finally {
             if (success == false && Strings.hasLength(uploadId.get())) {
                 final AbortMultipartUploadRequest aboutRequest = new AbortMultipartUploadRequest(blobStore.bucket(), buildKey(blobName), uploadId.get());
+                setRequestHeader(aboutRequest);
                 SocketAccess.doPrivilegedVoid(() ->
                         blobStore.client().abortMultipartUpload(aboutRequest));
             }
@@ -193,8 +199,8 @@ public class COSBlobContainer extends AbstractBlobContainer {
     public Map<String, BlobMetaData> listBlobsByPrefix(@Nullable String blobNamePrefix) throws IOException {
         try {
             return SocketAccess.doPrivileged((PrivilegedAction<Map<String, BlobMetaData>>) () -> {
-            MapBuilder<String, BlobMetaData> blobsBuilder = MapBuilder.newMapBuilder();
-            ObjectListing prevListing = null;
+                MapBuilder<String, BlobMetaData> blobsBuilder = MapBuilder.newMapBuilder();
+                ObjectListing prevListing = null;
                 while (true) {
                     ObjectListing list;
                     if (prevListing != null) {
@@ -217,7 +223,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
                     }
                 }
                 return blobsBuilder.immutableMap();
-        });
+            });
         } catch (final CosClientException e) {
             throw new IOException("Exception when listing blobs by prefix [" + blobNamePrefix + "]", e);
         }
@@ -258,5 +264,10 @@ public class COSBlobContainer extends AbstractBlobContainer {
         } else {
             return Tuple.tuple(parts + 1, remaining);
         }
+    }
+
+    private void setRequestHeader(CosServiceRequest request) {
+        if (request == null) return;
+        request.putCustomRequestHeader("User-Agent", "Elasticsearch");
     }
 }
