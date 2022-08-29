@@ -10,6 +10,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.qcloud.cos.exception.MultiObjectDeleteException;
+import com.qcloud.cos.internal.CosServiceRequest;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
@@ -32,7 +33,7 @@ import org.elasticsearch.common.unit.ByteSizeValue;
  * A plugin to add a repository type 'cos' -- The Object Storage service in QCloud.
  */
 public class COSBlobContainer extends AbstractBlobContainer {
-    
+
     private static final Logger logger = LogManager.getLogger(COSBlobContainer.class);
 
     private static final int MAX_BULK_DELETES = 1000;
@@ -71,7 +72,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
             throw e;
         }
     }
-    
+
     @Override
     public InputStream readBlob(String blobName, long position, long length) throws IOException {
         if (position < 0L) {
@@ -86,13 +87,13 @@ public class COSBlobContainer extends AbstractBlobContainer {
             return new CosRetryingInputStream(blobStore, buildKey(blobName), position, Math.addExact(position, length - 1));
         }
     }
-    
+
     @Override
     public long readBlobPreferredLength() {
         // This container returns streams that must be fully consumed, so we tell consumers to make bounded requests.
         return new ByteSizeValue(32, ByteSizeUnit.MB).getBytes();
     }
-    
+
     /**
      * 可以忽略failIfAlreadyExists，因为cos会自动覆盖重名的object
      */
@@ -118,6 +119,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
         meta.setContentLength(blobSize);
         PutObjectRequest putObjectRequest =
                 new PutObjectRequest(blobStore.bucket(), buildKey(blobName), inputStream, meta);
+        setRequestHeader(putObjectRequest);
         try {
             PutObjectResult putObjectResult = SocketAccess.doPrivileged(() ->
                     blobStore.client().putObject(putObjectRequest));
@@ -145,6 +147,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
 
         try {
             final InitiateMultipartUploadRequest request = new InitiateMultipartUploadRequest(bucketName, buildKey(blobName));
+            setRequestHeader(request);
             InitiateMultipartUploadResult initResult = SocketAccess.doPrivileged(() ->
                     blobStore.client().initiateMultipartUpload(request));
             uploadId.set(initResult.getUploadId());
@@ -161,6 +164,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
                 uploadPartRequest.setUploadId(uploadId.get());
                 uploadPartRequest.setInputStream(inputStream);
                 uploadPartRequest.setPartNumber(i);
+                setRequestHeader(uploadPartRequest);
 
                 if (i < nbParts) {
                     uploadPartRequest.setPartSize(partSize);
@@ -182,6 +186,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
             }
 
             CompleteMultipartUploadRequest completeMultipartUploadRequest = new CompleteMultipartUploadRequest(blobStore.bucket(), buildKey(blobName), uploadId.get(), parts);
+            setRequestHeader(completeMultipartUploadRequest);
             SocketAccess.doPrivileged(() ->
                     blobStore.client().completeMultipartUpload(completeMultipartUploadRequest));
             success = true;
@@ -191,6 +196,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
         } finally {
             if (success == false && Strings.hasLength(uploadId.get())) {
                 final AbortMultipartUploadRequest aboutRequest = new AbortMultipartUploadRequest(blobStore.bucket(), buildKey(blobName), uploadId.get());
+                setRequestHeader(aboutRequest);
                 SocketAccess.doPrivilegedVoid(() ->
                         blobStore.client().abortMultipartUpload(aboutRequest));
             }
@@ -210,6 +216,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
                     list = SocketAccess.doPrivileged(() -> blobStore.client().listNextBatchOfObjects(finalPrevListing));
                 } else {
                     final ListObjectsRequest listObjectsRequest = new ListObjectsRequest();
+                    setRequestHeader(listObjectsRequest);
                     listObjectsRequest.setBucketName(blobStore.bucket());
                     listObjectsRequest.setPrefix(keyPath);
                     list = SocketAccess.doPrivileged(() -> blobStore.client().listObjects(listObjectsRequest));
@@ -269,6 +276,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
                 for (DeleteObjectsRequest deleteRequest : deleteRequests) {
                     List<String> keyInRequest = deleteRequest.getKeys().stream().map(DeleteObjectsRequest.KeyVersion::getKey).collect(Collectors.toList());
                     try {
+                        setRequestHeader(deleteRequest);
                         blobStore.client().deleteObjects(deleteRequest);
                         outstanding.removeAll(keyInRequest);
                     } catch (MultiObjectDeleteException e) {
@@ -295,18 +303,21 @@ public class COSBlobContainer extends AbstractBlobContainer {
         assert outstanding.isEmpty();
     }
 
-    private static DeleteObjectsRequest bulkDelete(String bucket, List<String> blobs) {
-        return new DeleteObjectsRequest(bucket).withKeys(blobs.toArray(Strings.EMPTY_ARRAY)).withQuiet(true);
+    private DeleteObjectsRequest bulkDelete(String bucket, List<String> blobs) {
+        DeleteObjectsRequest deleteObjectsRequest = new DeleteObjectsRequest(bucket).
+                withKeys(blobs.toArray(Strings.EMPTY_ARRAY)).withQuiet(true);
+        setRequestHeader(deleteObjectsRequest);
+        return deleteObjectsRequest;
     }
 
     @Override
     public Map<String, BlobMetadata> listBlobsByPrefix(@Nullable String blobNamePrefix) throws IOException {
         try {
             return executeListing(generateListObjectsRequest(blobNamePrefix == null ? keyPath : buildKey(blobNamePrefix)))
-                        .stream()
-                        .flatMap(listing -> listing.getObjectSummaries().stream())
-                        .map(summary -> new PlainBlobMetadata(summary.getKey().substring(keyPath.length()), summary.getSize()))
-                        .collect(Collectors.toMap(PlainBlobMetadata::name, Function.identity()));
+                    .stream()
+                    .flatMap(listing -> listing.getObjectSummaries().stream())
+                    .map(summary -> new PlainBlobMetadata(summary.getKey().substring(keyPath.length()), summary.getSize()))
+                    .collect(Collectors.toMap(PlainBlobMetadata::name, Function.identity()));
         } catch (CosClientException e) {
             throw new IOException("Exception when listing blobs by prefix [" + blobNamePrefix + "]", e);
         }
@@ -362,6 +373,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
 
     private ListObjectsRequest generateListObjectsRequest(String keyPath) {
         ListObjectsRequest listObjectsRequest = new ListObjectsRequest();
+        setRequestHeader(listObjectsRequest);
         listObjectsRequest.withBucketName(blobStore.bucket()).withPrefix(keyPath).withDelimiter("/");
         return listObjectsRequest;
     }
@@ -397,4 +409,14 @@ public class COSBlobContainer extends AbstractBlobContainer {
             return Tuple.tuple(parts + 1, remaining);
         }
     }
+
+
+    /**
+     * set request header
+     */
+    private void setRequestHeader(CosServiceRequest request) {
+        if (request == null) return;
+        request.putCustomRequestHeader("User-Agent", "Elasticsearch");
+    }
+
 }
