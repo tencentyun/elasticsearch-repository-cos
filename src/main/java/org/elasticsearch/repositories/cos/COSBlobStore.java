@@ -1,6 +1,7 @@
 package org.elasticsearch.repositories.cos;
 
 import com.qcloud.cos.COSClient;
+import com.qcloud.cos.internal.CosServiceRequest;
 import com.qcloud.cos.model.COSObjectSummary;
 import com.qcloud.cos.model.DeleteObjectsRequest;
 import com.qcloud.cos.model.ObjectListing;
@@ -47,6 +48,7 @@ public class COSBlobStore extends AbstractComponent implements BlobStore {
                     keys.add(new DeleteObjectsRequest.KeyVersion(summary.getKey()));
                     if (keys.size() > 500) {
                         multiObjectDeleteRequest.setKeys(keys);
+                        setRequestHeader(multiObjectDeleteRequest);
                         client.deleteObjects(multiObjectDeleteRequest);
                         multiObjectDeleteRequest = new DeleteObjectsRequest(list.getBucketName());
                         keys.clear();
@@ -61,6 +63,7 @@ public class COSBlobStore extends AbstractComponent implements BlobStore {
 
             if (!keys.isEmpty()) {
                 multiObjectDeleteRequest.setKeys(keys);
+                setRequestHeader(multiObjectDeleteRequest);
                 client.deleteObjects(multiObjectDeleteRequest);
             }
         });
@@ -82,5 +85,10 @@ public class COSBlobStore extends AbstractComponent implements BlobStore {
 
     public String bucket() {
         return bucket;
+    }
+
+    private void setRequestHeader(CosServiceRequest request) {
+        if (request == null) return;
+        request.putCustomRequestHeader("User-Agent", "Elasticsearch");
     }
 }
