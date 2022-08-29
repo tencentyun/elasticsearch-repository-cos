@@ -12,6 +12,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.qcloud.cos.exception.MultiObjectDeleteException;
+import com.qcloud.cos.internal.CosServiceRequest;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
@@ -157,6 +158,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
                             flushBuffer(true);
                             final CompleteMultipartUploadRequest complRequest =
                                     new CompleteMultipartUploadRequest(blobStore.bucket(), absoluteBlobKey, uploadId.get(), parts);
+                            setRequestHeader(complRequest);
                             SocketAccess.doPrivilegedVoid(() -> blobStore.client().completeMultipartUpload(complRequest));
                         }
                     }
@@ -187,17 +189,20 @@ public class COSBlobContainer extends AbstractBlobContainer {
         uploadRequest.setInputStream(stream);
         uploadRequest.setPartSize(size);
         uploadRequest.setLastPart(lastPart);
+        setRequestHeader(uploadRequest);
         return uploadRequest;
     }
     
     private void abortMultiPartUpload(String uploadId, String blobName) {
         final AbortMultipartUploadRequest abortRequest =
                 new AbortMultipartUploadRequest(blobStore.bucket(), blobName, uploadId);
+        setRequestHeader(abortRequest);
         SocketAccess.doPrivilegedVoid(() -> blobStore.client().abortMultipartUpload(abortRequest));
     }
     
     private InitiateMultipartUploadRequest initiateMultiPartUpload(String blobName) {
         final InitiateMultipartUploadRequest initRequest = new InitiateMultipartUploadRequest(blobStore.bucket(), blobName);
+        setRequestHeader(initRequest);
         return initRequest;
     }
     
@@ -227,6 +232,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
                     final ListObjectsRequest listObjectsRequest = new ListObjectsRequest();
                     listObjectsRequest.setBucketName(blobStore.bucket());
                     listObjectsRequest.setPrefix(keyPath);
+                    setRequestHeader(listObjectsRequest);
                     list = SocketAccess.doPrivileged(() -> blobStore.client().listObjects(listObjectsRequest));
                 }
                 
@@ -327,8 +333,11 @@ public class COSBlobContainer extends AbstractBlobContainer {
         }
     }
 
-    private static DeleteObjectsRequest bulkDelete(String bucket, List<String> blobs) {
-        return new DeleteObjectsRequest(bucket).withKeys(blobs.toArray(Strings.EMPTY_ARRAY)).withQuiet(true);
+    private DeleteObjectsRequest bulkDelete(String bucket, List<String> blobs) {
+        DeleteObjectsRequest deleteObjectsRequest = new DeleteObjectsRequest(bucket)
+                .withKeys(blobs.toArray(Strings.EMPTY_ARRAY)).withQuiet(true);
+        setRequestHeader(deleteObjectsRequest);
+        return deleteObjectsRequest;
     }
 
     @Override
@@ -398,6 +407,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
     private ListObjectsRequest listObjectsRequest(String keyPath) {
         ListObjectsRequest listObjectsRequest = new ListObjectsRequest();
         listObjectsRequest.withBucketName(blobStore.bucket()).withPrefix(keyPath).withDelimiter("/");
+        setRequestHeader(listObjectsRequest);
         return listObjectsRequest;
     }
 
@@ -412,7 +422,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
                              final String blobName,
                              final InputStream input,
                              final long blobSize) throws IOException {
-        
+
         // Extra safety checks
         if (blobSize > MAX_FILE_SIZE.getBytes()) {
             throw new IllegalArgumentException("Upload request size [" + blobSize + "] can't be larger than " + MAX_FILE_SIZE);
@@ -485,6 +495,7 @@ public class COSBlobContainer extends AbstractBlobContainer {
             
             final CompleteMultipartUploadRequest complRequest = new CompleteMultipartUploadRequest(bucketName, blobName, uploadId.get(),
                     parts);
+            setRequestHeader(complRequest);
             SocketAccess.doPrivilegedVoid(() -> blobStore.client().completeMultipartUpload(complRequest));
             success = true;
             
@@ -535,5 +546,13 @@ public class COSBlobContainer extends AbstractBlobContainer {
         } else {
             return Tuple.tuple(parts + 1, remaining);
         }
+    }
+
+    /**
+     * Set request header
+     */
+    private void setRequestHeader(CosServiceRequest request) {
+        if (request == null) return;
+        request.putCustomRequestHeader("User-Agent","Elasticsearch");
     }
 }
