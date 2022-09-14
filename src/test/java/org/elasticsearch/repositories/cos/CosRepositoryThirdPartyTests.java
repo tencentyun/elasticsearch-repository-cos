@@ -60,40 +60,4 @@ public class CosRepositoryThirdPartyTests extends AbstractThirdPartyRepositoryTe
 
         assertThat(putReposirotyResponse.isAcknowledged(), equalTo(true));
     }
-
-    @Override
-    protected boolean assertCorruptionVisible(BlobStoreRepository repo, Executor genericExec) throws Exception {
-        // COS is only eventually consistent for the list operations used by this assertions so we retry for 10 minutes assuming that
-        // listing operations will become consistent within these 10 minutes.
-        assertBusy(() -> assertTrue(super.assertCorruptionVisible(repo, genericExec)), 30L, TimeUnit.SECONDS);
-        return true;
-    }
-
-    @Override
-    protected void assertConsistentRepository(BlobStoreRepository repo, Executor executor) throws Exception {
-        // COS is only eventually consistent for the list operations used by this assertions so we retry for 10 minutes assuming that
-        // listing operations will become consistent within these 10 minutes.
-        assertBusy(() -> super.assertConsistentRepository(repo, executor), 30L, TimeUnit.SECONDS);
-    }
-
-    protected void assertBlobsByPrefix(BlobPath path, String prefix, Map<String, BlobMetadata> blobs) throws Exception {
-        // COS is eventually consistent so we retry for 10 minutes assuming a list operation will never take longer than that
-        // to become consistent.
-        assertBusy(() -> super.assertBlobsByPrefix(path, prefix, blobs), 30L, TimeUnit.SECONDS);
-    }
-
-    @Override
-    protected void assertChildren(BlobPath path, Collection<String> children) throws Exception {
-        // COS is eventually consistent so we retry for 10 minutes assuming a list operation will never take longer than that
-        // to become consistent.
-        assertBusy(() -> super.assertChildren(path, children), 30L, TimeUnit.SECONDS);
-    }
-
-    @Override
-    protected void assertDeleted(BlobPath path, String name) throws Exception {
-        // COS is eventually consistent so we retry for 10 minutes assuming a list operation will never take longer than that
-        // to become consistent.
-        assertBusy(() -> super.assertDeleted(path, name), 30L, TimeUnit.SECONDS);
-    }
-
 }
