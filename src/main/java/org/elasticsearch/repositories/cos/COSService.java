@@ -1,3 +1,17 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may
+ * not use this file except in compliance with the License. You may obtain
+ * a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+
 package org.elasticsearch.repositories.cos;
 
 import com.qcloud.cos.COSClient;
@@ -28,13 +42,13 @@ public class COSService implements Closeable {
     }
 
     private synchronized COSClient createClient(RepositoryMetadata metaData) {
-        String access_key_id = COSClientSettings.ACCESS_KEY_ID.get(metaData.settings());
-        String access_key_secret = COSClientSettings.ACCESS_KEY_SECRET.get(metaData.settings());
-        String region = COSClientSettings.REGION.get(metaData.settings());
+        String access_key_id = COSClientSettings.getConfigValue(metaData.settings(), COSClientSettings.ACCESS_KEY_ID);
+        String access_key_secret = COSClientSettings.getConfigValue(metaData.settings(), COSClientSettings.ACCESS_KEY_SECRET);
+        String region = COSClientSettings.getConfigValue(metaData.settings(), COSClientSettings.REGION);
         if (region == null || !Strings.hasLength(region)) {
             throw new RepositoryException(metaData.name(), "No region defined for cos repository");
         }
-        String endPoint = COSClientSettings.END_POINT.get(metaData.settings());
+        String endPoint = COSClientSettings.getConfigValue(metaData.settings(), COSClientSettings.END_POINT);
 
         COSCredentials cred = new BasicCOSCredentials(access_key_id, access_key_secret);
         

@@ -1,3 +1,17 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may
+ * not use this file except in compliance with the License. You may obtain
+ * a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+
 package org.elasticsearch.repositories.cos;
 
 import org.apache.logging.log4j.LogManager;
@@ -14,9 +28,11 @@ import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
+import org.elasticsearch.common.util.concurrent.ListenableFuture;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.common.util.BigArrays;
-import org.elasticsearch.common.xcontent.NamedXContentRegistry;
+import org.elasticsearch.snapshots.SnapshotDeleteListener;
+import org.elasticsearch.xcontent.NamedXContentRegistry;
 import org.elasticsearch.indices.recovery.RecoverySettings;
 import org.elasticsearch.monitor.jvm.JvmInfo;
 import org.elasticsearch.repositories.FinalizeSnapshotContext;
@@ -126,24 +142,24 @@ public class COSRepository extends MeteredBlobStoreRepository {
                   final ClusterService clusterService,
                   final BigArrays bigArrays,
                   final RecoverySettings recoverySettings) {
-        super(metadata, 
-                COMPRESS_SETTING.get(metadata.settings()), 
+        super(metadata,
                 namedXContentRegistry, 
                 clusterService,
                 bigArrays,
                 recoverySettings,
+                buildBasePath(metadata),
                 buildLocation(metadata));
         this.service = cos;
-        String bucket = COSClientSettings.BUCKET.get(metadata.settings());
+        String bucket = COSClientSettings.getConfigValue(metadata.settings(), COSClientSettings.BUCKET);
         if (bucket == null || !Strings.hasLength(bucket)) {
             throw new RepositoryException(metadata.name(), "No bucket defined for cos repository");
         }
-        String basePath = COSClientSettings.BASE_PATH.get(metadata.settings());
-        String app_id = COSClientSettings.APP_ID.get(metadata.settings());
+        String basePath = COSClientSettings.getConfigValue(metadata.settings(), COSClientSettings.BASE_PATH);
+        String app_id = COSClientSettings.getConfigValue(metadata.settings(), COSClientSettings.APP_ID);
         // qcloud-sdk-v5 app_id directly joined with bucket name
         if (Strings.hasLength(app_id)) {
             this.bucket = bucket + "-" + app_id;
-            deprecationLogger.deprecate(DeprecationCategory.SECURITY, "cos_repository_secret_settings",
+            deprecationLogger.critical(DeprecationCategory.SECURITY, "cos_repository_secret_settings",
                     "cos repository bucket already contain app_id, and app_id will not be supported for the cos repository in future releases");
         } else {
             this.bucket = bucket;
@@ -151,7 +167,7 @@ public class COSRepository extends MeteredBlobStoreRepository {
 
         if (basePath.startsWith("/")) {
             basePath = basePath.substring(1);
-            deprecationLogger.deprecate(DeprecationCategory.SECURITY, "cos_repository_secret_settings",
+            deprecationLogger.critical(DeprecationCategory.SECURITY, "cos_repository_secret_settings",
                     "cos repository base_path trimming the leading `/`, and leading `/` will not be supported for the cos repository in future releases");
         }
 
@@ -160,8 +176,8 @@ public class COSRepository extends MeteredBlobStoreRepository {
         } else {
             this.basePath = BlobPath.EMPTY;
         }
-        this.compress = COSClientSettings.COMPRESS.get(metadata.settings());
-        this.chunkSize = COSClientSettings.CHUNK_SIZE.get(metadata.settings());
+        this.compress = COSClientSettings.getConfigValue(metadata.settings(), COSClientSettings.COMPRESS);
+        this.chunkSize = COSClientSettings.getConfigValue(metadata.settings(), COSClientSettings.CHUNK_SIZE);
         this.bufferSize = BUFFER_SIZE_SETTING.get(metadata.settings());
         
         coolDown = COOLDOWN_PERIOD.get(metadata.settings());
@@ -171,7 +187,7 @@ public class COSRepository extends MeteredBlobStoreRepository {
     }
     
     private static Map<String, String> buildLocation(RepositoryMetadata metadata) {
-        return org.elasticsearch.core.Map.of("base_path", BASE_PATH_SETTING.get(metadata.settings()),
+        return Map.of("base_path", BASE_PATH_SETTING.get(metadata.settings()),
                 "bucket", BUCKET_SETTING.get(metadata.settings()));
     }
     
@@ -182,27 +198,72 @@ public class COSRepository extends MeteredBlobStoreRepository {
     private final AtomicReference<Scheduler.Cancellable> finalizationFuture = new AtomicReference<>();
     
     @Override
-    public void finalizeSnapshot(FinalizeSnapshotContext finalizeSnapshotContext) {
+    public void finalizeSnapshot(final FinalizeSnapshotContext finalizeSnapshotContext) {
+        final FinalizeSnapshotContext wrappedFinalizeContext;
         if (SnapshotsService.useShardGenerations(finalizeSnapshotContext.repositoryMetaVersion()) == false) {
-            finalizeSnapshotContext = new FinalizeSnapshotContext(
+            final ListenableFuture<Void> metadataDone = new ListenableFuture<>();
+            wrappedFinalizeContext = new FinalizeSnapshotContext(
                     finalizeSnapshotContext.updatedShardGenerations(),
                     finalizeSnapshotContext.repositoryStateId(),
                     finalizeSnapshotContext.clusterMetadata(),
                     finalizeSnapshotContext.snapshotInfo(),
                     finalizeSnapshotContext.repositoryMetaVersion(),
-                    delayedListener(finalizeSnapshotContext)
+                    delayedListener(ActionListener.runAfter(finalizeSnapshotContext, () -> metadataDone.onResponse(null))),
+                    info -> metadataDone.addListener(new ActionListener<>() {
+                        @Override
+                        public void onResponse(Void unused) {
+                            finalizeSnapshotContext.onDone(info);
+                        }
+
+                        @Override
+                        public void onFailure(Exception e) {
+                            assert false : e; // never fails
+                        }
+                    })
             );
+        } else {
+            wrappedFinalizeContext = finalizeSnapshotContext;
         }
-        super.finalizeSnapshot(finalizeSnapshotContext);
+        super.finalizeSnapshot(wrappedFinalizeContext);
     }
     
     @Override
     public void deleteSnapshots(Collection<SnapshotId> snapshotIds, long repositoryStateId, Version repositoryMetaVersion,
-                                ActionListener<RepositoryData> listener) {
-        if (SnapshotsService.useShardGenerations(repositoryMetaVersion) == false) {
-            listener = delayedListener(listener);
+                                SnapshotDeleteListener listener) {
+        final SnapshotDeleteListener wrappedListener;
+        if (SnapshotsService.useShardGenerations(repositoryMetaVersion)) {
+            wrappedListener = listener;
+        } else {
+            wrappedListener = new SnapshotDeleteListener() {
+                @Override
+                public void onDone() {
+                    listener.onDone();
+                }
+
+                @Override
+                public void onRepositoryDataWritten(RepositoryData repositoryData) {
+                    logCooldownInfo();
+                    final Scheduler.Cancellable existing = finalizationFuture.getAndSet(threadPool.schedule(() -> {
+                        final Scheduler.Cancellable cancellable = finalizationFuture.getAndSet(null);
+                        assert cancellable != null;
+                        listener.onRepositoryDataWritten(repositoryData);
+                    }, coolDown, ThreadPool.Names.SNAPSHOT));
+                    assert existing == null : "Already have an ongoing finalization " + finalizationFuture;
+                }
+
+                @Override
+                public void onFailure(Exception e) {
+                    logCooldownInfo();
+                    final Scheduler.Cancellable existing = finalizationFuture.getAndSet(threadPool.schedule(() -> {
+                        final Scheduler.Cancellable cancellable = finalizationFuture.getAndSet(null);
+                        assert cancellable != null;
+                        listener.onFailure(e);
+                    }, coolDown, ThreadPool.Names.SNAPSHOT));
+                    assert existing == null : "Already have an ongoing finalization " + finalizationFuture;
+                }
+            };
         }
-        super.deleteSnapshots(snapshotIds, repositoryStateId, repositoryMetaVersion, listener);
+        super.deleteSnapshots(snapshotIds, repositoryStateId, repositoryMetaVersion, wrappedListener);
     }
     
     private <T> ActionListener<T> delayedListener(ActionListener<T> listener) {
@@ -264,5 +325,14 @@ public class COSRepository extends MeteredBlobStoreRepository {
             cancellable.cancel();
         }
         super.doClose();
+    }
+
+    private static BlobPath buildBasePath(RepositoryMetadata metadata) {
+        final String basePath = BASE_PATH_SETTING.get(metadata.settings());
+        if (Strings.hasLength(basePath)) {
+            return BlobPath.EMPTY.add(basePath);
+        } else {
+            return BlobPath.EMPTY;
+        }
     }
 }
