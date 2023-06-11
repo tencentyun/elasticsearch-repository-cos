@@ -32,6 +32,7 @@ import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.util.SetOnce;
 import org.elasticsearch.ExceptionsHelper;
+import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.blobstore.*;
 import org.elasticsearch.common.blobstore.support.AbstractBlobContainer;
@@ -365,6 +366,11 @@ public class COSBlobContainer extends AbstractBlobContainer {
         } catch (final CosClientException e) {
             throw new IOException("Exception when listing blobs by prefix [" + blobNamePrefix + "]", e);
         }
+    }
+
+    @Override
+    public void compareAndExchangeRegister(String key, long expected, long updated, ActionListener<OptionalLong> listener) {
+        ActionListener.completeWith(listener, OptionalLong::empty);
     }
 
     @Override
