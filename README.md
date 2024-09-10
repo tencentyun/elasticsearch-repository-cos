@@ -30,7 +30,7 @@ PUT _snapshot/my_cos_backup
     "settings": {
         "access_key_id": "xxxxxx",
         "access_key_secret": "xxxxxxx",
-        "bucket": "不带appId后缀的bucket名",
+        "bucket": "xxxx-xxxx",
         "region": "ap-guangzhou",
         "compress": true,
         "chunk_size": "500mb",
@@ -39,9 +39,9 @@ PUT _snapshot/my_cos_backup
     }
 }
 ```
-* bucket: COS Bucket 名字，**不要带-{appId}后缀**。
+* bucket: COS Bucket 名字，新版COS Bucket名字会带-{appId}后缀。
 * region：COS Bucket 地域，建议与 ES 集群同地域。
-* base_path：备份目录，形式如/dir1/dir2/dir3，需要写最开头的’/‘，目录最后不需要'/'。
+* base_path：备份目录，形式如dir1/dir2/dir3，不需要写最开头的’/‘。
 * app_id: 腾讯云账号 APPID，将在6.8之后的版本废弃，app_id 已包含在bucket参数中。
 
 
