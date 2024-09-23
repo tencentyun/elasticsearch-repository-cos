@@ -69,9 +69,9 @@ dependencies {
     implementation "com.qcloud:cos_api:5.6.231"
     implementation "commons-codec:commons-codec:1.13"
     implementation "commons-logging:commons-logging:1.2"
-    implementation "com.fasterxml.jackson.core:jackson-core:2.13.4.1"
-    implementation "com.fasterxml.jackson.core:jackson-annotations:2.13.4.1"
-    implementation "com.fasterxml.jackson.core:jackson-databind:2.13.4.1"
+    implementation "com.fasterxml.jackson.core:jackson-core:2.17.2"
+    implementation "com.fasterxml.jackson.core:jackson-annotations:2.17.2"
+    implementation "com.fasterxml.jackson.core:jackson-databind:2.17.2"
     implementation "org.apache.httpcomponents:httpclient:4.5.13"
     implementation "org.apache.httpcomponents:httpcore:4.4.16"
     implementation "org.apache.logging.log4j:log4j-api:2.17.1"
@@ -83,7 +83,7 @@ dependencies {
 
 configurations.all {
     resolutionStrategy.force "joda-time:joda-time:2.10.4"
-    resolutionStrategy.force "com.fasterxml.jackson.core:jackson-core:2.10.4"
+    resolutionStrategy.force "com.fasterxml.jackson.core:jackson-core:2.17.2"
     resolutionStrategy.force "commons-codec:commons-codec:1.11"
     resolutionStrategy.force "commons-logging:commons-logging:1.2"
     resolutionStrategy.force "org.apache.httpcomponents:httpclient:4.5.10"
